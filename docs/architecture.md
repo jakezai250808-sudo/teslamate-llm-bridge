@@ -65,7 +65,7 @@ plays/<名称>/
 
 | 协议 | 消费者 | 工具 / 端点形式 |
 |---|---|---|
-| **MCP**（Model Context Protocol） | Claude Code、Codex、任意 MCP 客户端 | `list_plays` / `run_play` / `render_play_card` |
+| **MCP**（Model Context Protocol） | Claude Code、Codex、任意 MCP 客户端 | `list_plays` / `run_play` / `get_creative_prompt` / `generate_play_image` |
 | **HTTP / OpenAPI** | ChatGPT Custom GPT、扣子智能体、任意 HTTP 客户端 | REST endpoint，遵循项目 OpenAPI spec |
 
 两套协议能力集严格 1:1 映射，无"某平台独有玩法"的情况。
@@ -137,8 +137,8 @@ plays/<名称>/
 | 玩法声明文件夹 | `plays/<name>/play.yaml` + `fixtures.yaml` + `creative-prompt.md` |
 | 玩法 JSON Schema | `plays/play.schema.json` |
 | play-compat CI | `.github/workflows/validate-plays.yml` |
-| MCP server（接口一对外） | `mcp-server/server.py` |
-| HTTP / OpenAPI（接口一对外） | `bridge/` Spring Boot REST endpoint |
+| MCP server（接口一对外） | `mcp-server/server.py`（4 tools：list_plays / run_play / get_creative_prompt / generate_play_image） |
+| HTTP / OpenAPI（接口一对外） | `bridge/` Spring Boot REST endpoint（2 端点：listPlays / runPlay） |
 | 接口二 API 直调（Seedream） | `mcp-server/server.py` 中的 `generate_play_image` tool |
 | 生图描述模板 | `plays/<name>/creative-prompt.md` |
 | demo 数据 | `ops/demo/` seed SQL（compose 里的 demo profile） |

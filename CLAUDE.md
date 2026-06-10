@@ -1,6 +1,6 @@
 # teslamate-llm-bridge — Claude Code 工作指南
 
-把 TeslaMate 的原始 PostgreSQL 数据变成 LLM 可以直接聊的内容：声明式玩法（play）引擎 + 可分享的 PNG 战绩卡片，一套定义同时支持 ChatGPT Actions / Coze 插件 / MCP 三个平台。
+把 TeslaMate 的原始 PostgreSQL 数据变成 LLM 可以直接聊的内容：声明式玩法（play）引擎 + AI 生图分享卡，一套定义同时支持 ChatGPT Actions / Coze 插件 / MCP 三个平台。
 
 ---
 
@@ -8,11 +8,11 @@
 
 | 目录 | 是什么 | 主要技术 |
 |---|---|---|
-| `bridge/` | Spring Boot 3.3 引擎，groupId `io.teslabridge` artifactId `teslamate-llm-bridge`，端口 8770 | Java 21 + Spring Boot 3.3 + JDBC + Batik SVG → PNG |
-| `bridge/src/main/java/io/teslabridge/play/` | **玩法引擎核心**：manifest loader、SQL 静态守卫、compute 管道、Batik 渲染器 | — |
-| `plays/` | 声明式玩法集合，每个子目录一个玩法（`play.yaml` + 可选 `card.svg.tmpl` + `fixtures.yaml`） | YAML + SVG |
+| `bridge/` | Spring Boot 3.3 引擎，groupId `io.teslabridge` artifactId `teslamate-llm-bridge`，端口 8770 | Java 21 + Spring Boot 3.3 + JDBC |
+| `bridge/src/main/java/io/teslabridge/play/` | **玩法引擎核心**：manifest loader、SQL 静态守卫、compute 管道 | — |
+| `plays/` | 声明式玩法集合，每个子目录一个玩法（`play.yaml` + 可选 `creative-prompt.md` + `fixtures.yaml`） | YAML |
 | `plays/play.schema.json` | 玩法 manifest JSON Schema（draft 2020-12），**禁止改动** | — |
-| `mcp-server/` | Python MCP server，proxy HTTP API，3 个工具（`list_plays` / `run_play` / `render_play_card`） | Python 3.11+ + FastMCP + httpx |
+| `mcp-server/` | Python MCP server，proxy HTTP API，4 个工具（`list_plays` / `run_play` / `get_creative_prompt` / `generate_play_image`） | Python 3.11+ + FastMCP + httpx |
 | `tools/` | CI 工具：`validate_plays.py`（引擎镜像验证 + fixture runner） | Python |
 | `bin/` | 本地辅助脚本：`play-load-data.sh`、`play-preview.sh`、`play-compat-test.sh` | bash |
 | `docs/` | 规范、平台接入指南、good-first-issues | markdown |

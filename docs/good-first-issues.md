@@ -76,30 +76,28 @@ plus a row-count column for `min_sample`. Mind NULL elevations (`COALESCE`, `IS 
 
 ---
 
-## 3. Engine: configurable card themes
+## 3. Add `creative-prompt.md` to plays that are missing it
 
-Labels: `good first issue`, `engine`, **blocked-until-engine-import** (the play engine lands in
-this repo in the coming weeks — see README roadmap; design discussion can start now)
+Labels: `good first issue`, `play`
 
 ### Problem
 
-Card templates hardcode their palette (see `plays/driving-personality/card.svg.tmpl`: background gradient,
-text grays). Every play inventing its own colors means inconsistent share cards and makes a future
-"dark/light/brand" user setting impossible.
+Several plays (e.g. `efficiency-report`, `extremes-card`, `weekend-warrior`) have rich structured
+output but no `creative-prompt.md`. Users on Path A (Seedream API) or Path B (browser-driven
+ChatGPT) must write their own prompt from scratch.
 
 ### Proposal sketch (to be refined in the issue)
 
-- Define a small set of theme tokens the renderer always provides as built-in template variables,
-  e.g. `${theme.bg}`, `${theme.fg}`, `${theme.muted}`, `${theme.accent}` — same substitution and
-  XML-escaping path as existing variables, so no new injection surface.
-- Themes are engine-side named presets (start with `night` + `light`); plays may still override
-  `accent` per persona (driving-personality's `${persona.color}` keeps working).
-- Spec impact: extend §5 built-ins table + §7 in `docs/play-manifest-spec.md`; **no manifest
-  schema change** (tokens are built-ins, not new YAML fields), so `schema_version` stays 1.
-- Migrate `driving-personality`'s template to tokens as the reference implementation.
+- Add a `creative-prompt.md` to one missing play following the v1/v2 template convention in
+  `docs/play-manifest-spec.md §7`.
+- The v1 section must be model-agnostic (works with DALL-E 3, Gemini, Seedream).
+- The v2 section should add Seedream 4.0 hints: negative prompts, Chinese flair, aspect ratio.
+- All `{placeholder}` names must match the play's `output.fields` list exactly.
+- Include one example generated image (PNG ≤ 2 MB) in `docs/gallery/` using demo data.
 
 ### Acceptance
 
-- Spec PR updating built-ins (§5) and card rules (§7)
-- Renderer change + tests (once engine code is in-repo)
-- `driving-personality` card renders identically under the default theme
+- `creative-prompt.md` added next to the manifest
+- `{placeholder}` names verified against `output.fields`
+- Gallery image using demo data only (no real VIN, no real GPS)
+- PR title format: `play(<name>): add creative-prompt.md`

@@ -8,9 +8,9 @@ A *play* is a self-contained folder:
 
 ```
 plays/<name>/
-├── play.yaml        # manifest (required)
-├── card.svg.tmpl    # share-card SVG template (required iff manifest has `card:`)
-└── fixtures.yaml    # CI test cases (required, always)
+├── play.yaml           # manifest (required)
+├── creative-prompt.md  # image generation template (optional)
+└── fixtures.yaml       # CI test cases (required, always)
 ```
 
 The engine loads plays from the application classpath and, optionally, from an external
@@ -36,7 +36,7 @@ The registry is immutable after startup; changing `PLAYS_DIR` requires a restart
 | `compute` | yes | array 1–64 steps | Ordered compute pipeline. See §4. |
 | `tables` | no | 3-level map, leaf strings ≤ 120 chars | Named lookup tables for `lookup` steps. |
 | `output` | yes | `{fields: [...]}` | Public JSON contract. See §6. |
-| `card` | no | `{template: "card.svg.tmpl"}` | Opt-in share card. Template filename is **locked** to `card.svg.tmpl` (no path escape). See §7. |
+| ~~`card`~~ | removed | — | SVG card templates have been removed from the open-source play format. Use `creative-prompt.md` instead. |
 
 `additionalProperties: false` everywhere — unknown keys are a validation error, not a silent no-op.
 
@@ -194,32 +194,26 @@ output:
 enforced at render time — notably, a `number` field injected into a card template's geometry
 attribute (e.g. a bar `width`) is validated as numeric before injection.
 
-## 7. Card template (`card.svg.tmpl`)
+## 7. `creative-prompt.md` (optional)
 
-Optional. If `card:` is present the template must exist next to the manifest and pass load-time
-lint:
+If present, this file provides image generation templates for Interface 2. The file is read
+by the `get_creative_prompt` MCP tool and served at the HTTP endpoint `GET
+/api/v1/plays/{name}/creative-prompt`.
 
-- **Forbidden content** (any hit ⇒ play skipped): `<script`, `<foreignObject`, `<!ENTITY`,
-  `<!DOCTYPE`.
-- **Must be well-formed XML.** The engine parses the template (DTD disabled) and walks the DOM:
-  any `href` / `xlink:href` / `src` attribute must be a **local fragment reference** (`#someId`)
-  — every other value is rejected regardless of scheme, quoting, or whitespace (`https:`,
-  `file:`, `data:`, `ftp:` … all blocked). Likewise every `url(...)` reference (fill, filter,
-  CSS) must be `url(#someId)`. At render time Batik additionally runs with a no-load external
-  resource / script security policy, so external loading is blocked twice.
-- **No emoji (non-BMP code points) in template text** ⇒ play skipped. The render host ships only
-  Noto Sans CJK (no emoji font) and Batik cannot render color emoji — they become tofu boxes.
-  Emoji belongs in the manifest `emoji:` metadata field; draw pictograms as vector shapes.
-- Every `${var}` must resolve to a compute var, an output field, a built-in (§5), or a dot path
-  into an object var. Unresolvable placeholder ⇒ WARN + play skipped.
-- Substituted values are **XML-escaped** (`& < > " '`) — you cannot inject markup via data, and
-  neither can a hostile database value.
-- `${car_name}` is guaranteed ≤ 12 code points (engine truncates longer names with `…`, §5) —
-  size your text layout for that, SVG `<text>` does not wrap or ellipsize.
-- Rendered to **1080×1080 PNG** (Apache Batik, DTD processing disabled). Design on a
-  `viewBox="0 0 1080 1080"`. CJK text renders with Noto Sans CJK.
-- Responses carry an ETag derived from the play content hash + car + window, so identical cards
-  are cache-friendly.
+Convention: include two named sections separated by `---`:
+
+- **v1 universal** — plain-language prompt that works with any image model (DALL-E 3, Gemini
+  Imagen, 豆包 Seedream).
+- **v2 Seedream-tuned** — optimised for Seedream 4.0 (火山方舟 doubao-seedream-4-0); may include
+  Chinese flair text, negative prompts, aspect-ratio hints.
+
+Use `{placeholder}` syntax (curly braces, no `$`) matching the names from the `output.fields`
+list. The MCP tool substitutes actual values from `run_play` before sending the filled prompt to
+the image model.
+
+> **Note:** `card.svg.tmpl` (SVG rendering via Apache Batik) is not part of the open-source play
+> format. Image generation is handled entirely through `creative-prompt.md` + Interface 2
+> (see [docs/image-generation.md](image-generation.md)).
 
 ## 8. `fixtures.yaml` (required)
 
@@ -227,7 +221,7 @@ Fixtures make plays testable without a database: CI feeds each `row` through `mi
 compute pipeline and asserts the outputs. **A play without fixtures fails CI**
 (`.github/workflows/validate-plays.yml` runs both `tools/validate_plays.py` and `mvn test` in the
 `bridge/` module; the Java `PlayRegistryTest` exercises the same fixtures through the production
-engine's SnakeYAML loader, SQL-guard, compute pipeline, and SVG lint).
+engine's SnakeYAML loader, SQL-guard, and compute pipeline).
 
 To run the Java fixture suite locally: `cd bridge && mvn test`.
 

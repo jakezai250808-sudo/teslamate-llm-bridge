@@ -1,6 +1,6 @@
 # Connect to Claude via MCP
 
-This guide wires teslamate-llm-bridge to **Claude Desktop** (or any MCP-compatible client such as Cursor or Codex) using the included Python MCP server. Claude can then call three tools — `list_plays`, `run_play`, `render_play_card` — directly from a conversation.
+This guide wires teslamate-llm-bridge to **Claude Desktop** (or any MCP-compatible client such as Cursor or Codex) using the included Python MCP server. Claude can then call four tools — `list_plays`, `run_play`, `get_creative_prompt`, `generate_play_image` — directly from a conversation.
 
 MCP runs locally over `stdio`; no public HTTPS URL is required.
 
@@ -139,10 +139,10 @@ Claude calls `run_play` with `play_name=driving-personality, car_id=1` and shows
 > **Tip**: `car_id` is the integer primary key in TeslaMate's `cars` table — usually `1` for a single car. If you are unsure, check the `CAR_IDS` value in your `.env` or run `docker compose exec bridge curl -s http://localhost:8770/api/v1/cars 2>/dev/null` once a `/cars` listing endpoint is added.
 
 ```
-给我渲染一张 driving-personality 的战绩卡片
+给我做一张 driving-personality 的分享图
 ```
 
-Claude calls `render_play_card` and displays the 1080×1080 PNG inline in the chat.
+Claude chains `get_creative_prompt` → `generate_play_image` and displays the AI-generated poster inline in the chat (requires `ARK_API_KEY` in the MCP server env).
 
 If you get `"scored": false`, the bridge did not find enough data in the default 30-day window. Ask Claude:
 
@@ -230,12 +230,12 @@ Note: streamable-HTTP transport requires `mcp[cli]>=1.3`.
 | `ModuleNotFoundError: mcp` | Run `pip3 install -e mcp-server/` (or `pip install -e mcp-server/`) in the same Python that `python3` resolves to. On macOS Homebrew Python the command may be `pip3` not `pip`. |
 | `Connection refused` on bridge | Confirm `docker compose up -d` succeeded: `curl http://localhost:8770/actuator/health` |
 | `401 Unauthorized` | Set `BRIDGE_API_TOKEN` in the config to match your `.env` `API_TOKEN` |
-| `render_play_card` returns 404 | That play has no card template (`has_card: false` from `list_plays`) |
+| `generate_play_image` returns config guide | `ARK_API_KEY` not set in the MCP server env — add it to `claude_desktop_config.json` and restart |
 
 ---
 
 ## Known limitations
 
 - **Claude.ai web** (remote MCP) requires the Remote MCP feature (currently in limited preview). The self-hosted bridge does not yet publish a remote MCP endpoint.
-- `render_play_card` returns a base64 PNG. Claude Desktop renders it inline; other clients may show raw base64.
+- `generate_play_image` returns a base64 PNG. Claude Desktop renders it inline; other clients may show raw base64.
 - The bridge must be reachable from the machine running Claude Desktop. HTTPS is not required for localhost.

@@ -19,10 +19,6 @@ curl http://localhost:8770/api/v1/plays
 
 # Run a play (demo car_id=99)
 curl "http://localhost:8770/api/v1/cars/99/play/driving-personality"
-
-# Download share card PNG
-curl "http://localhost:8770/api/v1/cars/99/play/driving-personality/card.png" -o /tmp/card.png
-open /tmp/card.png
 ```
 
 Stop:
@@ -44,7 +40,7 @@ bash bin/demo.sh --car-id 1
 bash bin/demo.sh --demo
 ```
 
-The `--demo` flag starts the demo profile, waits for health, runs `driving-personality`, downloads the PNG card, and opens it.
+The `--demo` flag starts the demo profile, waits for health, runs `driving-personality`, and prints the structured JSON result.
 
 ---
 
@@ -135,7 +131,7 @@ Tips:
 
 1. **Zero config** — `docker compose --profile demo up -d`, no DB setup needed.
 2. **Instant results** — play scores in milliseconds.
-3. **Shareable card** — 1080×1080 PNG card ready for WeChat / Twitter / Instagram.
+3. **Shareable image** — use `get_creative_prompt` + `generate_play_image` (MCP) or paste the template into ChatGPT / 豆包 to get a social share poster.
 4. **Multi-platform** — same play runs via ChatGPT Actions, Claude MCP, and Coze.
 5. **Extensible** — add a new play by dropping a YAML + fixtures into `plays/`. No Java or Python needed.
 

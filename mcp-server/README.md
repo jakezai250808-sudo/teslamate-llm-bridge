@@ -9,7 +9,7 @@ Exposes 4 tools backed by the [teslamate-llm-bridge](https://github.com/teslamat
 |---|---|
 | `list_plays` | List all available plays (analyses) |
 | `run_play` | Run a play for a car, get structured JSON result |
-| `render_play_card` | Render a 1080×1080 PNG share card |
+| `get_creative_prompt` | Fetch a play's creative-prompt.md template for image generation |
 | `generate_play_image` | 调用火山方舟 Seedream-4.0 文生图，返回 base64 图片（中国大陆直连，无需 VPN） |
 
 ## Prerequisites

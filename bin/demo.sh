@@ -6,9 +6,8 @@
 #   1. Start the bridge (docker compose up)
 #   2. Wait for health
 #   3. List plays
-#   4. Run driving-personality and display the result
-#   5. Download the share card PNG
-#   6. Print asciinema recording hint
+#   4. Run driving-personality and display the JSON result
+#   5. Show next-step guidance for image generation (Interface 2)
 #
 # Usage:
 #   bash bin/demo.sh [--car-id N] [--demo]
@@ -72,13 +71,13 @@ echo ""
 
 # ------------------------------------------------------------------
 if [[ "$DEMO_MODE" == "true" ]]; then
-  echo ">>> [1/5] Starting demo profile (postgres-demo + bridge-demo)..."
+  echo ">>> [1/4] Starting demo profile (postgres-demo + bridge-demo)..."
   echo "    First run pulls postgres:16-alpine and seeds ~45 days of data."
   echo "    This takes ~30s on first boot."
   docker compose --profile demo up -d
   SERVICE_NAME="bridge-demo"
 else
-  echo ">>> [1/5] Starting bridge (docker compose up -d)..."
+  echo ">>> [1/4] Starting bridge (docker compose up -d)..."
   docker compose up -d
   SERVICE_NAME="bridge"
 fi
@@ -99,13 +98,13 @@ done
 
 # ------------------------------------------------------------------
 echo ""
-echo ">>> [2/5] Listing available plays..."
+echo ">>> [2/4] Listing available plays..."
 PLAYS_JSON=$(_curl "${BASE_URL}/api/v1/plays")
 echo "$PLAYS_JSON" | python3 -m json.tool 2>/dev/null || echo "$PLAYS_JSON"
 
 # ------------------------------------------------------------------
 echo ""
-echo ">>> [3/5] Running driving-personality (car_id=${CAR_ID})..."
+echo ">>> [3/4] Running driving-personality (car_id=${CAR_ID})..."
 if [[ "$DEMO_MODE" == "true" ]]; then
   # Demo data spans 2026-04-27 ~ 2026-06-10; use a fixed window that covers it
   START_DATE="2026-05-11"
@@ -124,33 +123,23 @@ echo "    Persona: ${PERSONA}"
 
 # ------------------------------------------------------------------
 echo ""
-echo ">>> [4/5] Downloading share card PNG (car_id=${CAR_ID})..."
-CARD_PATH="/tmp/driving-personality-demo.png"
-if [[ "$DEMO_MODE" == "true" ]]; then
-  CARD_URL="${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality/card.png?start_date=${START_DATE}&end_date=${END_DATE}"
-else
-  CARD_URL="${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality/card.png"
-fi
-
-if _curl "${CARD_URL}" -o "${CARD_PATH}"; then
-  BYTES=$(wc -c < "${CARD_PATH}" | tr -d ' ')
-  echo "    Card saved: ${CARD_PATH} (${BYTES} bytes)"
-  if command -v open &>/dev/null; then
-    echo "    Opening card with system viewer..."
-    open "${CARD_PATH}"
-  elif command -v xdg-open &>/dev/null; then
-    xdg-open "${CARD_PATH}"
-  fi
-else
-  echo "    Card render failed — 'scored: false'? Try a wider date range."
-fi
-
-# ------------------------------------------------------------------
-echo ""
-echo ">>> [5/5] Done!"
+echo ">>> [4/4] Done!"
 echo ""
 echo "================================================================"
-echo " Next steps:"
+echo " Next steps — Interface 2 (image generation):"
+echo ""
+echo " Path A — API direct (Seedream):"
+echo "   export ARK_API_KEY=<your-key>"
+echo "   Use 'get_creative_prompt driving-personality' in Claude MCP"
+echo "   then 'generate_play_image' with the filled prompt"
+echo ""
+echo " Path B — Browser-driven ChatGPT / Doubao:"
+echo "   See AGENTS.md §路径 B for step-by-step instructions"
+echo ""
+echo " Path C — ChatGPT/Doubao native (OpenAPI users):"
+echo "   Ask your bot: '帮我生成驾驶人格分享图' — DALL-E 3 / Seedream built-in"
+echo ""
+echo " Other:"
 echo "   - Connect to Claude Desktop (MCP):  docs/connect-claude-mcp.md"
 echo "   - Connect to ChatGPT Actions:        docs/connect-chatgpt.md"
 echo "   - Connect to Coze:                   docs/connect-coze.md"
