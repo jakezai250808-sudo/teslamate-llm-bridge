@@ -143,6 +143,7 @@ public class PlayController {
             data.put("scored", false);
             data.put("sample", u.sample());
             data.put("min_sample", u.minSample());
+            data.put("window_days", u.windowDays());
             return ResponseEntity.ok(Map.of("data", data));
         }
 
@@ -185,31 +186,69 @@ public class PlayController {
 
         Window w = resolveWindow(play, startDate, endDate);
 
-        // ETag = SHA-256(playName + carId + start + end + play 内容哈希)：play 更新自动 bust。
-        String etag = computeEtag(play, carId, w.start, w.end);
+        // If-None-Match 长度 guard（防 CPU amplification）。
+        // ETag 比对移到查库之后：需纳入真实数据修订因子，在此仅做长度截断，
+        // 以防超大值被带入后续 matchesAnyEtag 的字符串分割。
         String safeIfNoneMatch =
                 (ifNoneMatch != null && ifNoneMatch.length() > IF_NONE_MATCH_MAX_LEN)
                         ? null
                         : ifNoneMatch;
-        if (safeIfNoneMatch != null && matchesAnyEtag(safeIfNoneMatch, etag)) {
-            return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
-                    .eTag(etag)
-                    .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
-                    .build();
-        }
 
         byte[] png;
         try {
             PlayEngine.RunResult result = engine.run(play, carId, w.start, w.end);
+            // ETag 在查库后基于渲染输入计算：
+            //   - Scored：vars map（SQL 聚合结果 + compute 中间变量）稳定序列化 hash，
+            //     数据更新后 vars 变化 → ETag 自然 bust，客户端不会拿旧卡。
+            //   - Unscored：用 sample + minSample 作为数据修订因子（数据不足情况）。
+            // 两种情况的 ETag 都包含 play 内容哈希（play 定义更新自动 bust）。
+            // ETag 修复：Scored 卡片的 dataRevision 须纳入 carLabel + 日期桶。
+            // carLabel 在 Scored 分支预拉取一次，后续渲染直接复用，避免双次 DB 查询。
+            PlayEngine.CarLabel carLabelForEtag =
+                    (result instanceof PlayEngine.Scored) ? engine.carLabel(carId) : null;
+            String dataRevision;
+            if (result instanceof PlayEngine.Scored scored) {
+                // ETag 修复：dataRevision 除 vars 外还须纳入：
+                //   1. carLabel 三字段（车名改变 → 卡面变 → ETag 必须 bust）
+                //   2. generated_at 的「日期桶」（addBuiltinCardVars 写入的是 LocalDate 字符串，
+                //      即 yyyy-MM-dd 精度；ETag 用相同粒度，同天多次请求可 304，跨天自动 bust）。
+                String dateBucket = LocalDate.now(CARD_TZ).toString();
+                dataRevision = stableHash(scored.vars())
+                        + ":" + carLabelForEtag.name()
+                        + ":" + carLabelForEtag.model()
+                        + ":" + carLabelForEtag.trimBadging()
+                        + ":" + dateBucket;
+            } else {
+                PlayEngine.Unscored u = (PlayEngine.Unscored) result;
+                dataRevision = u.sample() + ":" + u.minSample();
+            }
+            String etag = computeEtag(play, carId, w.start, w.end, dataRevision);
+            if (safeIfNoneMatch != null && matchesAnyEtag(safeIfNoneMatch, etag)) {
+                return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
+                        .eTag(etag)
+                        .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
+                        .build();
+            }
             if (result instanceof PlayEngine.Unscored u) {
                 // 数据不足不报错：灰色「数据不足」兜底卡 HTTP 200，LLM 平台流程不中断。
                 png = renderer.renderInsufficient(play, u.sample(), u.minSample());
+                return ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_PNG)
+                        .eTag(etag)
+                        .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
+                        .body(png);
             } else {
                 PlayEngine.Scored scored = (PlayEngine.Scored) result;
                 Map<String, Object> vars = new LinkedHashMap<>(scored.vars());
                 addOutputAliases(play, vars);
-                addBuiltinCardVars(vars, carId, scored.windowDays());
+                // 复用 carLabelForEtag 避免二次查 DB
+                addBuiltinCardVarsWithLabel(vars, carLabelForEtag, scored.windowDays());
                 png = renderer.render(play, vars);
+                return ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_PNG)
+                        .eTag(etag)
+                        .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
+                        .body(png);
             }
         } catch (PlayComputeException | PlayCardRenderer.PlayRenderException e) {
             log.error("play '{}' card render failed carId={}: {}", play.name(), carId, e.getMessage());
@@ -240,12 +279,6 @@ public class PlayController {
                                         .getBytes(StandardCharsets.UTF_8));
             }
         }
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
-                .eTag(etag)
-                .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
-                .body(png);
     }
 
     // ====== helpers ======
@@ -299,7 +332,15 @@ public class PlayController {
      * <p>{@code watermark} 来自 {@code bridge.card-watermark} 配置，默认空字符串（模板可选渲染）。
      */
     private void addBuiltinCardVars(Map<String, Object> vars, long carId, long windowDays) {
-        PlayEngine.CarLabel car = engine.carLabel(carId);
+        addBuiltinCardVarsWithLabel(vars, engine.carLabel(carId), windowDays);
+    }
+
+    /**
+     * 卡片内置变量注入（使用已预拉取的 {@link PlayEngine.CarLabel}）。
+     * ETag 修复：renderPlayCard Scored 分支复用 ETag 计算时已拉取的 carLabel，避免二次 DB 查询。
+     */
+    private void addBuiltinCardVarsWithLabel(
+            Map<String, Object> vars, PlayEngine.CarLabel car, long windowDays) {
         vars.putIfAbsent("car_name", truncateDisplay(car.displayName(), CAR_NAME_MAX_CODEPOINTS));
         vars.putIfAbsent("car_model", car.displayModel());
         vars.putIfAbsent("window_label", "近 " + windowDays + " 天");
@@ -391,7 +432,14 @@ public class PlayController {
 
     // ====== ETag ======
 
-    static String computeEtag(PlayDefinition play, long carId, LocalDateTime start, LocalDateTime end) {
+    /**
+     * ETag = SHA-256(playName + carId + start + end + play 内容哈希 + dataRevision)。
+     *
+     * <p>{@code dataRevision} 是数据修订因子：Scored 时为 vars map 的稳定 hash（SQL 聚合结果
+     * 变化即 bust），Unscored 时为 "sample:minSample"。这样数据更新后客户端不会拿旧卡。
+     */
+    static String computeEtag(
+            PlayDefinition play, long carId, LocalDateTime start, LocalDateTime end, String dataRevision) {
         String input =
                 "play-card:"
                         + play.name()
@@ -402,13 +450,37 @@ public class PlayController {
                         + ":"
                         + end
                         + ":"
-                        + play.contentSha256();
+                        + play.contentSha256()
+                        + ":"
+                        + dataRevision;
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (byte b : digest) sb.append(String.format("%02x", b));
             return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+    }
+
+    /**
+     * vars map 稳定序列化 hash（用于 ETag 数据修订因子）。
+     *
+     * <p>按 key 排序后拼 "key=value" 字符串，再取 SHA-256 前 16 字节（32 hex）。
+     * 只需「变化可辨识」，不需密码学强度，16 字节已足够。
+     */
+    static String stableHash(Map<String, Object> vars) {
+        StringBuilder sb = new StringBuilder();
+        vars.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> sb.append(e.getKey()).append('=').append(e.getValue()).append(';'));
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 16; i++) hex.append(String.format("%02x", digest[i]));
+            return hex.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }

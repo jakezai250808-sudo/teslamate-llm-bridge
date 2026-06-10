@@ -34,15 +34,21 @@ import java.util.regex.Pattern;
  * review 租户过滤语义。
  *
  * <p>运行时防御另有两层（{@link PlayEngine}）：专属 JdbcTemplate
- * {@code setQueryTimeout(5)}（JDBC 层，驱动转译为 {@code SET LOCAL statement_timeout}）+
- * {@code setMaxRows(100)}、readOnly TransactionTemplate。
+ * {@code setQueryTimeout(5)} + {@code setMaxRows(100)}、readOnly TransactionTemplate。
  */
 final class PlaySqlGuard {
 
-    /** 词边界拒绝表：写操作 + DDL + 权限 + 危险函数。大小写不敏感。 */
+    /**
+     * 词边界拒绝表：写操作 + DDL + 权限 + 危险函数 + 集合操作。大小写不敏感。
+     *
+     * <p>UNION/EXCEPT/INTERSECT：第二个 leg 完全不受 {@code car_id = :car_id} 约束，可拼接
+     * 任意第二查询跨数据泄露；加入 FORBIDDEN 统一在加载期拒绝，不依赖 review 兜底。
+     * 单租户场景同样需要拦截，防止社区贡献的 play SQL 通过 UNION 拼出越权查询。
+     */
     private static final Pattern FORBIDDEN =
             Pattern.compile(
-                    "\\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|COPY|DO|CALL|EXECUTE|PG_SLEEP)\\b",
+                    "\\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|COPY|DO|CALL|EXECUTE|PG_SLEEP"
+                            + "|UNION|EXCEPT|INTERSECT)\\b",
                     Pattern.CASE_INSENSITIVE);
 
     /** 行注释 + 块注释（DOTALL 让块注释可跨行）。 */

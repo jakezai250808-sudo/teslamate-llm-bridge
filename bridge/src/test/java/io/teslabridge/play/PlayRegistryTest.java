@@ -168,6 +168,33 @@ class PlayRegistryTest {
     }
 
     @Test
+    void sqlWithUnion_rejected() throws IOException {
+        // UNION 的 second leg 不受 car_id 约束，加载期应直接拒绝（跨数据泄露防线）。
+        String yaml =
+                VALID_YAML
+                        .formatted("union-sql")
+                        .replace(
+                                "WHERE car_id = :car_id AND date BETWEEN :start AND :end",
+                                "WHERE car_id = :car_id AND date BETWEEN :start AND :end"
+                                        + " UNION ALL SELECT 0, 0");
+        writePlay("union-sql", yaml);
+        assertThat(registry().find("union-sql")).isEmpty();
+    }
+
+    @Test
+    void sqlWithExcept_rejected() throws IOException {
+        String yaml =
+                VALID_YAML
+                        .formatted("except-sql")
+                        .replace(
+                                "WHERE car_id = :car_id AND date BETWEEN :start AND :end",
+                                "WHERE car_id = :car_id AND date BETWEEN :start AND :end"
+                                        + " EXCEPT SELECT 0");
+        writePlay("except-sql", yaml);
+        assertThat(registry().find("except-sql")).isEmpty();
+    }
+
+    @Test
     void sqlWithSemicolon_rejected() throws IOException {
         String yaml =
                 VALID_YAML

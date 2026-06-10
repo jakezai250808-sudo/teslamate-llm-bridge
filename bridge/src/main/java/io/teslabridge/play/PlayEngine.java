@@ -88,9 +88,15 @@ public class PlayEngine {
     public RunResult run(PlayDefinition play, long carId, LocalDateTime start, LocalDateTime end) {
         long windowDays = Math.max(1L, ChronoUnit.DAYS.between(start, end));
 
-        Map<String, Object> row = readOnlyTx.execute(status -> queryFirstRow(play, carId, start, end));
+        // TransactionTemplate.execute() 声明返回 @Nullable T；readOnly 事务正常不会回滚/取消，
+        // 此处 null 仅在事务管理器主动回滚（极罕见）时出现，等价于 0 行 → unscored 路径。
+        // 用 requireNonNullElse 而非裸赋值，让 sampleOf 内的 null 分支不成为"隐式路径"。
+        Map<String, Object> row =
+                Objects.requireNonNullElse(
+                        readOnlyTx.execute(status -> queryFirstRow(play, carId, start, end)),
+                        Map.of());
 
-        int sample = sampleOf(play, row);
+        int sample = sampleOf(play, row.isEmpty() ? null : row);
         if (sample < play.minSampleMin()) {
             return new Unscored(sample, play.minSampleMin(), windowDays);
         }
