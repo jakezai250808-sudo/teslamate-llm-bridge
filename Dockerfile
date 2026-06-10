@@ -3,6 +3,8 @@ WORKDIR /workspace
 COPY bridge/pom.xml bridge/pom.xml
 COPY plays plays
 COPY bridge/src bridge/src
+# play-engine-core vendored via git subtree; build-helper pom uses ../play-engine-core/src/main/java
+COPY play-engine-core play-engine-core
 RUN apt-get update && apt-get install -y --no-install-recommends maven && \
     mvn -f bridge/pom.xml -DskipTests package -q && \
     mv bridge/target/teslamate-llm-bridge-*.jar /workspace/app.jar
