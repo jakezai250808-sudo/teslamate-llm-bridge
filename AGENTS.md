@@ -44,9 +44,9 @@ One new folder:
 
 ```
 plays/<your-play-name>/
-├── play.yaml        # required
-├── card.svg.tmpl    # only if the play has a share card
-└── fixtures.yaml    # required — PRs without fixtures are rejected
+├── play.yaml          # required
+├── creative-prompt.md # optional — image generation template
+└── fixtures.yaml      # required — PRs without fixtures are rejected
 ```
 
 No Java, no Python, no engine changes. If the idea seems to require engine changes (new SQL bind
@@ -167,29 +167,21 @@ output:
     - { name: total_drives,from: total_drives, type: number }  # 原始计数让结果可解释
 ```
 
-## Step 6 — card (optional) and creative-prompt (optional)
+## Step 6 — creative-prompt.md (optional)
 
-Skip both for v1 of your play unless asked (JSON-only is perfectly fine for a first PR).
+Skip for v1 of your play unless asked (JSON-only is perfectly fine for a first PR).
 
-**`creative-prompt.md`** — if your play has interesting enough output for users to want a social
-image, add a `plays/<name>/creative-prompt.md` alongside `play.yaml`. It should contain a
+**`creative-prompt.md`** — if your play has interesting output for users to want a social image,
+add a `plays/<name>/creative-prompt.md` alongside `play.yaml`. It should contain a
 fill-in-the-blanks prompt template (using `{placeholder}` notation matching your output field
-names) that users can paste into GPT Image / 豆包 / Qwen-Image after getting the JSON. See
-`plays/driving-personality/creative-prompt.md` as the reference. This file is not required and
-does not affect CI; it is purely for end-user documentation.
+names) that users (or Agents) can paste into GPT Image / 豆包 / Qwen-Image / Seedream after
+getting the JSON. See `plays/driving-personality/creative-prompt.md` as the reference — it
+contains a v1 (universal) and v2 (Seedream-tuned) template with 5-round tested phrasing rules.
 
-**`card.svg.tmpl`** — the engine-rendered deterministic PNG. If you do build one, copy
-`plays/driving-personality/card.svg.tmpl` as a base and obey spec §7:
+This file is read by the MCP `get_creative_prompt` tool and is not required; it does not affect CI.
 
-- `viewBox="0 0 1080 1080"`, well-formed XML, no `<script`/`<foreignObject`/`<!ENTITY`/`<!DOCTYPE`.
-- Any `href`/`xlink:href`/`src` attribute and any `url(...)` reference must be a **local `#id`**
-  — every external scheme (`https:`, `file:`, `data:` …) is rejected, whitespace tricks included.
-- **No emoji in SVG text** (non-BMP code points fail lint — the render host has no emoji font and
-  Batik cannot draw color emoji; they become tofu boxes). Emoji goes in the manifest `emoji:`
-  field; draw pictograms as vector shapes.
-- Every `${var}` must resolve; numbers only in geometry attributes.
-- `${car_name}` is guaranteed ≤ 12 code points (engine truncates with `…`) — lay out for that.
-- Set `card: { template: card.svg.tmpl }` in the manifest (that exact filename — it is locked).
+> **Note:** `card.svg.tmpl` is not part of the open-source play format. SVG rendering has been
+> removed from the open-source path; image generation is handled via Interface 2 (see below).
 
 ## Step 7 — fixtures (this is where most PRs fail)
 
@@ -314,7 +306,150 @@ Title: `play: <name> — <one-line description>`. PR body checklist:
 - [ ] SQL: single SELECT/WITH, real `car_id = :car_id` filter, no blacklist words, one aggregation row
 - [ ] level has a catch-all; lookup tables cover all labels + required default
 - [ ] fixtures: all level branches + expect_unscored case, values hand-computed
-- [ ] card (if any): passes lint (no emoji in text, refs local-# only), all ${vars} resolve, 1080x1080
+- [ ] creative-prompt.md (if included): `{placeholders}` match output field names, v1/v2 templates present
 ```
 
 One play per PR. Do not modify other plays, the schema, or the spec in the same PR.
+
+---
+
+## Interface 2 — Image Generation Guide (接口二：生图使用手册)
+
+> **你持有什么决定走哪条路。** 先看决策树，再看对应路径的详细步骤。
+
+### 快速决策树
+
+```
+你有 ChatGPT Plus / Codex 订阅？
+  是 → 路径 C（平台自带，零配置）
+  否 → 你有火山方舟 ARK_API_KEY？
+         是 → 路径 A（API 直调，MCP 一键）
+         否 → 你有豆包 / 即梦账号？
+                是 → 路径 B（浏览器驱动）
+                否 → 注册火山方舟（5 分钟，200 张免费）→ 路径 A
+                     或请有 ChatGPT 订阅的朋友帮生图
+                     都没有 → JSON 结构化结论本身即可使用，图是增强层
+```
+
+---
+
+### 路径 A — API 直调（火山方舟 Seedream-4.0）
+
+**适用：** 有 `ARK_API_KEY`（火山方舟 API Key）的玩家，走 MCP `generate_play_image` 一键生图。
+
+**配置步骤（约 5 分钟）：**
+
+1. 注册火山方舟控制台：https://console.volcengine.com/ark
+2. 「开通管理」→ 搜索「Doubao-Seedream-4.0」→「立即开通」（新用户 200 张免费，之后 ¥0.2/张）
+3. 「API Key 管理」→「新建 API Key」→ 复制 key
+4. 在 Claude Desktop MCP 配置的 `env` 块里加：
+   ```json
+   "ARK_API_KEY": "your-ark-api-key-here",
+   "SEEDREAM_MODEL": "doubao-seedream-4-0-250828"
+   ```
+5. 重启 Claude Desktop
+
+**完整生图流程（Agent 按序执行 5 步）：**
+
+```
+步骤 1 → list_plays()
+         返回：[{name: "driving-personality", ...}, ...]
+
+步骤 2 → run_play(play_name="driving-personality", car_id=1)
+         返回：{code: "FNLE", persona: {name: "午夜高速战神", tag: "#服务区VIP年卡用户"},
+                vigor: 78, night_pct: 17, avg_drive_km: 22.6, freq_pct: 83, drive_count: 52, ...}
+
+步骤 3 → get_creative_prompt(play_name="driving-personality")
+         返回：creative-prompt.md 原文（含 v1 通用版 + v2 Seedream 专用版模板）
+
+步骤 4 → 填充占位符（Agent 自行用步骤2数据填步骤3模板的 {占位符}）
+         · 选 v2 模板（Seedream 专用，5轮迭代 9/10 评分验证）
+         · 必须用模板，裸写 prompt 质量显著下降
+
+步骤 5 → generate_play_image(prompt="<填好的完整 prompt>", size="1080x1920")
+         返回：base64 PNG 图片（竖版 1080×1920 海报）
+```
+
+> **为什么不能跳过步骤 3/4 直接写 prompt？** v2 模板内嵌了 Seedream 专用的文字白名单约束、
+> 元语言翻译、量表布局规则——这些是 5 轮迭代的产物，裸写会丢失所有调优，中文文字乱入率显著上升。
+
+**对话示例：**
+```
+用户：给我做张驾驶人格分享图
+Agent：[自动串联上面 5 步] → 返回竖版海报图片
+```
+
+---
+
+### 路径 B — 浏览器驱动（ChatGPT 网页 / 豆包网页）
+
+**适用：** 你有 ChatGPT / 豆包已登录浏览器，Agent 用自己的 Chrome MCP 帮你操作网页生图。
+
+> **前置说明：** 登录态由用户保证（本项目不负责登录）。
+
+**Agent 执行步骤清单（以 ChatGPT 为例，豆包同理）：**
+
+```
+1. run_play + get_creative_prompt → 拿到 JSON 数据 + prompt 模板
+
+2. 填充占位符 → 得到完整 prompt 字符串
+   · ChatGPT 用 v1 模板（通用版，GPT Image 不需要 Seedream 白名单约束）
+   · 豆包 / 即梦用 v2 模板（Seedream 专用）
+
+3. 用 Chrome MCP 打开新标签：https://chatgpt.com
+   · 确认已登录（页面右上角有用户头像）
+   · 如未登录，提示用户先在浏览器完成登录
+
+4. 在对话输入框粘入完整 prompt + 说明（建议附上一句：「请生成一张图」）
+   · execute_javascript 在输入框写入内容：
+     document.querySelector('div[contenteditable="true"]').focus()
+     // 通过剪贴板或 innerText 注入 prompt
+   · 触发发送（找 Send 按钮或用回车）
+
+5. 等待生图完成（通常 10-30 秒）
+   · 检测 img[src^="https://oaidalleapiprodscus"] 或 .result-image 出现
+   · 超时上限 90 秒，超时提示用户手动等待
+
+6. 取图
+   · 找生成图的 img 元素，右键菜单「图片另存为」DOM 思路：
+     找到 img.src → 用 fetch + blob → 保存到本地路径
+   · 或提示用户右键保存
+
+7. 返回图片路径给用户
+```
+
+**注意事项：**
+- 绝对不能切走用户当前 active tab（见项目 CLAUDE.md 浏览器自动化规则）
+- 用 `make new tab at end of tabs` 创建新标签，不要 activate 窗口
+- 生图过程中不要轮询太频繁（每 3 秒检查一次即可）
+- 如果 ChatGPT 弹出「您已达到当日生图限制」，告知用户并结束
+
+**豆包网页同理：** 打开 https://www.doubao.com，找生图 bot（如「豆包·图像生成」），步骤与上方相同。
+
+---
+
+### 路径 C — Agent 平台自带（ChatGPT / 豆包对话里直接生图）
+
+**适用：** 你在 ChatGPT 对话里，或在接了本项目 Coze 插件的豆包 bot 里。
+
+用法最简单——平台本身有生图能力，对话里直接说：
+
+```
+「帮我生成驾驶人格分享图」
+```
+
+Agent 会自动调 `runPlay` 拿数据 → 填 creative-prompt v1 模板 → 触发平台内置 GPT Image / Seedream 生图。
+整个流程在同一个对话窗口完成，无需任何额外配置。
+
+---
+
+### gallery 示例图
+
+真实生成图在 `docs/gallery/`：
+
+| 文件 | 内容 | 生成方式 |
+|---|---|---|
+| `monthly-wrapped-demo.png` | demo 数据月报卡（FNLE 午夜高速战神，30 天 1222km） | 路径 A（Seedream 4.0） |
+| `driving-personality-fnle.png` | 人格卡 FNLE「午夜高速战神」 | 路径 A（Seedream 4.0） |
+
+完整生图路径说明：[`docs/image-generation.md`](docs/image-generation.md)
