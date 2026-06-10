@@ -1,0 +1,232 @@
+# ============================================================================
+# 驾驶人格 16 型 —— 第一个真实玩法（plays/_template 为格式参照）
+#
+# 四轴（各 2 档）× 16 型，MBTI 式 4 字母人格码：
+#   轴 1 动力  F(猛) / C(佛)   —— 地板电占比 + 平均时速合成 vigor 0-100
+#   轴 2 作息  N(夜) / D(昼)   —— 22:00-05:00（Asia/Shanghai）夜驾采样占比
+#   轴 3 半径  L(长途) / S(短途) —— 单次行程平均公里数
+#   轴 4 频率  E(高频) / O(低频) —— 活跃天数 / 窗口天数
+#
+# 阈值校准原则（传播多样性）：每轴尽量按城市通勤车主分布的中位数 50/50 分裂，
+# 16 型熵最大、人格码各不相同才有晒卡欲。阈值有意压低/抬高到「常见档」边缘：
+#   night_pct ≥10 → N（通勤族夜驾占比通常 <10%）
+#   avg_km    ≥12 → L（城市单程均 8-15km）
+#   vigor     ≥30 → F（vigor = punch_pct*6 + avg_speed/4，降低 avg_speed 权重
+#                      避免与半径轴强相关 —— 长途≈高速≈高均速）
+#   freq_pct  ≥60 → E（≈ 18 天/30 天）
+# 上线后应以匿名聚合分位数验证各轴分裂比例在 35%-65% 区间，偏了再调。
+# ============================================================================
+
+schema_version: 1
+
+name: driving-personality
+title: 驾驶人格十六型
+emoji: "🧬"
+
+description: >-
+  驾驶人格 16 型测试：用近 30 天 TeslaMate 行车数据，从动力（猛/佛）、作息（夜/昼）、
+  行驶半径（长/短）、出车频率（高/低）四轴算出 4 字母人格码（如 FNLE），配中文人格名、
+  一句话画像和自嘲标签，可渲染 1080×1080 分享卡。用户问「我的驾驶人格 / 我是哪种车主 /
+  测测我的开车风格」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 7 个聚合指标（恰 1 行）：sample_points / night_points / avg_speed_kmh /
+# punch_points / drive_count / avg_drive_km / active_days。
+# positions.date 与 drives.start_date 为 UTC naive timestamp，先标 UTC 再转 :tz
+# 取本地小时 / 本地日期（夜驾窗口 22:00-05:00 Asia/Shanghai）。
+sql: |-
+  WITH pos AS (
+    SELECT
+      COUNT(*) AS sample_points,
+      COALESCE(SUM(CASE WHEN EXTRACT(HOUR FROM (date AT TIME ZONE 'UTC') AT TIME ZONE :tz) >= 22
+                          OR EXTRACT(HOUR FROM (date AT TIME ZONE 'UTC') AT TIME ZONE :tz) < 5
+                        THEN 1 ELSE 0 END), 0) AS night_points,
+      COALESCE(AVG(speed), 0) AS avg_speed_kmh,
+      COALESCE(SUM(CASE WHEN power >= 100 THEN 1 ELSE 0 END), 0) AS punch_points
+    FROM positions
+    WHERE car_id = :car_id
+      AND date BETWEEN :start AND :end
+      AND speed > 0
+  ),
+  drv AS (
+    SELECT
+      COUNT(*) AS drive_count,
+      COALESCE(AVG(distance), 0) AS avg_drive_km,
+      COUNT(DISTINCT CAST((start_date AT TIME ZONE 'UTC') AT TIME ZONE :tz AS DATE)) AS active_days
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date BETWEEN :start AND :end
+      AND distance IS NOT NULL
+      AND distance > 0
+  )
+  SELECT pos.sample_points, pos.night_points, pos.avg_speed_kmh, pos.punch_points,
+         drv.drive_count, drv.avg_drive_km, drv.active_days
+  FROM pos, drv
+
+min_sample:
+  field: sample_points
+  min: 200
+
+compute:
+  # ---- 基础指标 ----
+  - var: night_pct
+    expr: "ROUND(night_points * 100 / sample_points)"
+  - var: punch_pct
+    expr: "ROUND(punch_points * 100 / sample_points)"
+  - var: avg_speed
+    expr: "ROUND(avg_speed_kmh)"
+  - var: avg_km
+    expr: "ROUND(avg_drive_km, 1)"
+  # 动力分：地板电占比（power ≥ 100kW 采样）权重 6 + 平均时速 / 4，封顶 100。
+  # avg_speed 权重压到 /4：均速与单程距离强相关（长途≈高速），权重太高会让
+  # 动力轴退化成半径轴的影子，压缩 16 型有效组合数。
+  - var: vigor
+    expr: "LEAST(100, ROUND(punch_pct * 6 + avg_speed / 4))"
+  - var: freq_pct
+    expr: "LEAST(100, ROUND(active_days * 100 / window_days))"
+  # 半径分（条形图用）：40km+ 单程 = 100
+  - var: dist_pct
+    expr: "LEAST(100, ROUND(avg_km * 5 / 2))"
+
+  # ---- 四轴判档 ----
+  - var: axis_power
+    level:
+      input: vigor
+      thresholds:
+        - lt: 30
+          label: "C"
+        - label: "F"
+  - var: axis_time
+    level:
+      input: night_pct
+      thresholds:
+        - lt: 10
+          label: "D"
+        - label: "N"
+  - var: axis_dist
+    level:
+      input: avg_km
+      thresholds:
+        - lt: 12
+          label: "S"
+        - label: "L"
+  - var: axis_freq
+    level:
+      input: freq_pct
+      thresholds:
+        - lt: 60
+          label: "O"
+        - label: "E"
+
+  # ---- 人格码 + 查表 ----
+  - var: code
+    template: "${axis_power}${axis_time}${axis_dist}${axis_freq}"
+  - var: persona
+    lookup:
+      key: code
+      table: personas
+      default:
+        name: "神秘驾驶体"
+        desc: "你的开法超出了已知十六型，建议联系研究所。"
+        tag: "#待收录新物种"
+
+  # ---- 卡片条形宽度（轨道 540px）----
+  - var: bar_vigor
+    expr: "vigor * 540 / 100"
+  - var: bar_night
+    expr: "night_pct * 540 / 100"
+  - var: bar_dist
+    expr: "dist_pct * 540 / 100"
+  - var: bar_freq
+    expr: "freq_pct * 540 / 100"
+
+  - var: summary
+    template: "近 ${window_days} 天驾驶人格 ${code}：夜驾 ${night_pct}%、地板电时刻 ${punch_pct}%、单程均 ${avg_km} 公里、出车率 ${freq_pct}%。"
+
+# 16 型人格表：F/C × N/D × L/S × E/O
+tables:
+  personas:
+    "FNLE":
+      name: "午夜高速战神"
+      desc: "别人睡了你才上高速，电门深浅全凭心情。"
+      tag: "#服务区VIP年卡用户"
+    "FNLO":
+      name: "深夜奇袭手"
+      desc: "平时按兵不动，一动就是深夜跨城急行军。"
+      tag: "#凌晨收费站熟脸"
+    "FNSE":
+      name: "夜巡街区闪电"
+      desc: "每晚出门压马路，绿灯起步永远路口第一。"
+      tag: "#遛的不是车是心情"
+    "FNSO":
+      name: "失眠弹射患者"
+      desc: "难得开一次还专挑半夜，地板电治好了失眠。"
+      tag: "#电门比褪黑素好使"
+    "FDLE":
+      name: "全天候公路火箭"
+      desc: "天天长途还全程超车道，电耗表看你脸色。"
+      tag: "#续航是用来挑战的"
+    "FDLO":
+      name: "周末弹射巡洋舰"
+      desc: "工作日吃灰，周末满电出征单程两百起步。"
+      tag: "#充电桩巡回大使"
+    "FDSE":
+      name: "买菜路上的赛车手"
+      desc: "三公里的路也要开出排位赛的气势。"
+      tag: "#地库圈速纪录保持者"
+    "FDSO":
+      name: "即兴弹射玩家"
+      desc: "车是大玩具，偶尔开一次就把推背感拉满。"
+      tag: "#一脚电门烦恼全散"
+    "CNLE":
+      name: "夜航定速船长"
+      desc: "深夜高速定速巡航，稳得像在开邮轮。"
+      tag: "#深夜高速包场选手"
+    "CNLO":
+      name: "月下漫游诗人"
+      desc: "偶尔深夜远行，开的是车，品的是夜色。"
+      tag: "#歌单比导航重要"
+    "CNSE":
+      name: "晚风遛车专业户"
+      desc: "每晚出门转一圈，速度温柔得像在散步。"
+      tag: "#车也要每天遛弯"
+    "CNSO":
+      name: "深夜静音幽灵"
+      desc: "很少出动，一动就是深夜悄悄滑过街角。"
+      tag: "#电机声都嫌吵"
+    "CDLE":
+      name: "续航管理大师"
+      desc: "天天长途却把能耗压得死死的，表显即实际。"
+      tag: "#人形能耗优化器"
+    "CDLO":
+      name: "假日佛系远征军"
+      desc: "节假日才出远门，全程右道，到达即胜利。"
+      tag: "#超车道与我无关"
+    "CDSE":
+      name: "通勤永动机"
+      desc: "两点一线准时准点，开得比闹钟还规律。"
+      tag: "#公司地库指定车位"
+    "CDSO":
+      name: "都市充电宝"
+      desc: "车位常驻选手，偶尔出门买菜，电池很养生。"
+      tag: "#一格电能用一个月"
+
+output:
+  fields:
+    - { name: code, from: code, type: string }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
+    - { name: vigor, from: vigor, type: number }
+    - { name: night_pct, from: night_pct, type: number }
+    - { name: punch_pct, from: punch_pct, type: number }
+    - { name: avg_speed_kmh, from: avg_speed, type: number }
+    - { name: avg_drive_km, from: avg_km, type: number }
+    - { name: freq_pct, from: freq_pct, type: number }
+    - { name: drive_count, from: drive_count, type: number }
+
+card:
+  template: card.svg.tmpl

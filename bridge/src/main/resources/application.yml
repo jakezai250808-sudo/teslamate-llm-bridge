@@ -1,0 +1,23 @@
+server:
+  port: 8770
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${TM_DB_HOST:localhost}:${TM_DB_PORT:5432}/${TM_DB_NAME:teslamate}
+    username: ${TM_DB_USER:teslamate}
+    password: ${TM_DB_PASS:}
+    driver-class-name: org.postgresql.Driver
+
+# Play engine: scan classpath plays/ + optional external directory
+bridge:
+  plays-dir: ${PLAYS_DIR:}
+  api-token: ${API_TOKEN:}
+  # Watermark text shown at the bottom of fallback error cards.
+  # Leave blank to omit the watermark. Example: "my-bridge.example.com"
+  card-watermark: ${CARD_WATERMARK:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

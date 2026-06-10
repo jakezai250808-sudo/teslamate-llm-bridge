@@ -1,0 +1,116 @@
+# Play: night-owl — 夜猫子指数
+# Spec: docs/play-manifest-spec.md · Schema: plays/play.schema.json
+schema_version: 1
+name: night-owl
+title: "夜猫子指数"
+emoji: "🦉"
+description: >-
+  How nocturnal is this driver? Share of drives started between 23:00 and 05:00
+  local time over the analysis window, distilled into an owl score (0-100),
+  an owl persona and a shareable card. 深夜行程占比 + 夜猫子人设卡片。
+scope: read:drives
+params:
+  default_days: 30
+
+# One read-only aggregation, exactly one result row.
+# Bind params provided by the engine: :car_id (long), :tz (Asia/Shanghai),
+# :start / :end (UTC timestamps of the analysis window).
+sql: |
+  WITH local_drives AS (
+    SELECT
+      start_date AT TIME ZONE 'UTC' AT TIME ZONE :tz AS local_start,
+      distance
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date <  :end
+      AND distance IS NOT NULL
+  )
+  SELECT
+    COUNT(*) AS total_drives,
+    COUNT(*) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 23
+         OR EXTRACT(HOUR FROM local_start) <  5
+    ) AS night_drives,
+    COALESCE(ROUND(SUM(distance) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 23
+         OR EXTRACT(HOUR FROM local_start) <  5
+    )::numeric, 1), 0) AS night_km
+  FROM local_drives
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 1) share of drives that started at night (percent, integer)
+  - var: night_ratio
+    expr: "ROUND(night_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 2) owl score 0-100: ratio dominates, night distance adds flavor
+  - var: owl_score
+    expr: "LEAST(ROUND(night_ratio * 1.2 + night_km / 10), 100)"
+
+  # 3) score bar width for the card (px on a 1080-wide canvas)
+  - var: bar_width
+    expr: "owl_score * 8"
+
+  # 4) ordered thresholds -> title (first `lt` hit wins, last entry is catch-all)
+  - var: owl_title
+    level:
+      input: owl_score
+      thresholds:
+        - lt: 20
+          label: "早睡模范生"
+        - lt: 45
+          label: "偶尔修仙党"
+        - lt: 70
+          label: "资深夜行侠"
+        - label: "终极夜猫子"
+
+  # 5) persona object for card styling, keyed by the title
+  - var: persona
+    lookup:
+      key: owl_title
+      table: personas
+      default:
+        name: "夜行者"
+        color: "#7c6ff0"
+        tagline: "The night is still young"
+
+  # 6) one-line summary for chat replies
+  - var: summary
+    template: "过去 ${window_days} 天，你有 ${night_ratio}% 的行程发生在 23:00–05:00，夜猫子指数 ${owl_score}/100"
+
+tables:
+  personas:
+    "早睡模范生":
+      name: "早睡模范生"
+      color: "#5ec26a"
+      tagline: "Early to bed, fully charged"
+    "偶尔修仙党":
+      name: "偶尔修仙党"
+      color: "#f0b429"
+      tagline: "Sometimes the night calls"
+    "资深夜行侠":
+      name: "资深夜行侠"
+      color: "#8a63d2"
+      tagline: "The streets are quieter after midnight"
+    "终极夜猫子":
+      name: "终极夜猫子"
+      color: "#4c4cff"
+      tagline: "Who needs sunlight anyway"
+
+output:
+  fields:
+    - { name: night_ratio,  from: night_ratio,  type: number }
+    - { name: owl_score,    from: owl_score,    type: number }
+    - { name: owl_title,    from: owl_title,    type: string }
+    - { name: persona,      from: persona,      type: object }
+    - { name: summary,      from: summary,      type: string }
+    - { name: night_drives, from: night_drives, type: number }
+    - { name: total_drives, from: total_drives, type: number }
+    - { name: night_km,     from: night_km,     type: number }
+
+card:
+  template: card.svg.tmpl

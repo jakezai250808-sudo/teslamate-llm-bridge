@@ -1,0 +1,58 @@
+# CI fixtures for charging-procrastinator.
+# Expected values hand-computed from play.yaml — see docs/play-manifest-spec.md §8.
+# Format matches the engine's fixture runner (top-level `fixtures:`,
+# below-threshold cases marked `expect_unscored: true`).
+fixtures:
+  - name: serious-procrastinator
+    window_days: 90
+    row:
+      total_charges: 24
+      avg_start_soc: 15.5
+      min_start_soc: 4
+      deep_drain_charges: 6
+    expect:
+      procrastination_index: 86   # ROUND(LEAST(GREATEST((50-15.5)*2.5, 0), 100)) = ROUND(86.25)
+      badge: "重度拖延：低电量警告是我的闹钟"
+      summary: "近 90 天平均 15.5% 才开始充电（最低 4%），拖延指数 86/100"
+
+  - name: battery-daredevil
+    window_days: 90
+    row:
+      total_charges: 18
+      avg_start_soc: 8.3
+      min_start_soc: 1
+      deep_drain_charges: 11
+    expect:
+      procrastination_index: 100  # (50-8.3)*2.5 = 104.25 -> LEAST(...,100) = 100
+      badge: "极限勇者：电量见底才想起充电"
+
+  - name: normal-human
+    window_days: 90
+    row:
+      total_charges: 30
+      avg_start_soc: 45.2
+      min_start_soc: 28
+      deep_drain_charges: 0
+    expect:
+      procrastination_index: 12   # ROUND((50-45.2)*2.5) = ROUND(12.0)
+      badge: "正常人类：该充就充"
+
+  - name: anxious-early-charger
+    window_days: 90
+    row:
+      total_charges: 41
+      avg_start_soc: 62.0
+      min_start_soc: 51
+      deep_drain_charges: 0
+    expect:
+      procrastination_index: 0    # GREATEST((50-62)*2.5, 0) = 0
+      badge: "焦虑早充型：电量低于一半就坐立不安"
+
+  - name: too-few-charges
+    window_days: 90
+    row:
+      total_charges: 2
+      avg_start_soc: 20.0
+      min_start_soc: 18
+      deep_drain_charges: 0
+    expect_unscored: true   # total_charges 2 < min_sample.min 3

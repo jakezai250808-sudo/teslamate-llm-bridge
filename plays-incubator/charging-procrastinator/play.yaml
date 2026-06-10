@@ -1,0 +1,62 @@
+# Play: charging-procrastinator — 充电拖延症
+# A JSON-only play (no `card:` section) — demonstrates the minimal play shape.
+# Spec: docs/play-manifest-spec.md · Schema: plays/play.schema.json
+schema_version: 1
+name: charging-procrastinator
+title: "充电拖延症"
+emoji: "🪫"
+description: >-
+  How low do you let the battery get before you finally plug in? Average
+  starting SOC over the window, a 0-100 procrastination index, and a
+  self-deprecating badge. 平均起充电量越低，拖延指数越高。Pure JSON play, no card.
+scope: read:drives
+params:
+  default_days: 90
+
+sql: |
+  SELECT
+    COUNT(*) AS total_charges,
+    COALESCE(ROUND(AVG(start_battery_level)::numeric, 1), 0) AS avg_start_soc,
+    COALESCE(MIN(start_battery_level), 0) AS min_start_soc,
+    COUNT(*) FILTER (WHERE start_battery_level <= 10) AS deep_drain_charges
+  FROM charging_processes
+  WHERE car_id = :car_id
+    AND start_date >= :start
+    AND start_date <  :end
+    AND start_battery_level IS NOT NULL
+
+min_sample:
+  field: total_charges
+  min: 3
+
+compute:
+  # 0-100: avg start SOC of 50%+ -> 0, of 10% -> 100
+  - var: procrastination_index
+    expr: "ROUND(LEAST(GREATEST((50 - avg_start_soc) * 2.5, 0), 100))"
+
+  - var: badge
+    level:
+      input: avg_start_soc
+      thresholds:
+        - lt: 12
+          label: "极限勇者：电量见底才想起充电"
+        - lt: 22
+          label: "重度拖延：低电量警告是我的闹钟"
+        - lt: 35
+          label: "压线充电派：再开一段没问题"
+        - lt: 50
+          label: "正常人类：该充就充"
+        - label: "焦虑早充型：电量低于一半就坐立不安"
+
+  - var: summary
+    template: "近 ${window_days} 天平均 ${avg_start_soc}% 才开始充电（最低 ${min_start_soc}%），拖延指数 ${procrastination_index}/100"
+
+output:
+  fields:
+    - { name: procrastination_index, from: procrastination_index, type: number }
+    - { name: badge,                 from: badge,                 type: string }
+    - { name: summary,               from: summary,               type: string }
+    - { name: avg_start_soc,         from: avg_start_soc,         type: number }
+    - { name: min_start_soc,         from: min_start_soc,         type: number }
+    - { name: deep_drain_charges,    from: deep_drain_charges,    type: number }
+    - { name: total_charges,         from: total_charges,         type: number }

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/teslamate-llm-bridge/teslamate-llm-bridge/blob/main/plays/play.schema.json",
+  "title": "teslamate-llm-bridge Play manifest (play.yaml) — schema_version 1",
+  "$comment": "贡献者侧单一事实源：本地可用任意 JSON-Schema 工具自检（yaml → json 后 validate）。引擎运行时由 PlayLoader 手写校验镜像本 schema，并额外强制三条语义约束：1) level.thresholds 仅末项可省 lt 且末项必须省（保证全覆盖、无不可达项）；2) lookup.default 必填；3) compute var 不允许重名。expr 语言仅支持 + - * / ( )、数字字面量、标识符 [a-z_][a-z0-9_]*、函数 GREATEST/LEAST/ROUND；除零返回 0 并打 WARN。",
+  "type": "object",
+  "required": ["schema_version", "name", "title", "description", "sql", "min_sample", "compute", "output"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+      "$comment": "必须与玩法目录名一致"
+    },
+    "title": { "type": "string", "maxLength": 40 },
+    "emoji": { "type": "string", "maxLength": 8 },
+    "description": { "type": "string", "maxLength": 300 },
+    "scope": { "enum": ["read:drives"] },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_days": { "type": "integer", "minimum": 1, "maximum": 365 }
+      }
+    },
+    "sql": {
+      "type": "string",
+      "maxLength": 8000,
+      "$comment": "必须含 :car_id；去注释后以 SELECT/WITH 开头；禁 ';' 与写操作关键字。可用绑定参数 :car_id(long) :tz(恒 Asia/Shanghai) :start/:end(timestamp)。聚合查询应只返 1 行；引擎只读第一行。"
+    },
+    "min_sample": {
+      "type": "object",
+      "required": ["field", "min"],
+      "additionalProperties": false,
+      "properties": {
+        "field": { "type": "string", "$comment": "SQL 返回列名（采样数）" },
+        "min": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "compute": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "$comment": "顺序流水线；每步恰含 expr/level/template/lookup 之一。expr 可引用 SQL 返回列、前序 var、内置 window_days。",
+      "items": {
+        "type": "object",
+        "required": ["var"],
+        "additionalProperties": false,
+        "properties": {
+          "var": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
+          "expr": { "type": "string", "maxLength": 500 },
+          "level": {
+            "type": "object",
+            "required": ["input", "thresholds"],
+            "additionalProperties": false,
+            "properties": {
+              "input": { "type": "string" },
+              "thresholds": {
+                "type": "array",
+                "minItems": 1,
+                "$comment": "有序：首个 value < lt 命中即取 label；末项必须省 lt 作兜底（引擎强制）",
+                "items": {
+                  "type": "object",
+                  "required": ["label"],
+                  "properties": {
+                    "lt": { "type": "number" },
+                    "label": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "template": { "type": "string", "maxLength": 200 },
+          "lookup": {
+            "type": "object",
+            "required": ["key", "table", "default"],
+            "additionalProperties": false,
+            "$comment": "default 必填以保证 key 未命中时仍全覆盖（设计定稿 §1.2）",
+            "properties": {
+              "key": { "type": "string" },
+              "table": { "type": "string" },
+              "default": { "type": "object" }
+            }
+          }
+        },
+        "oneOf": [
+          { "required": ["expr"] },
+          { "required": ["level"] },
+          { "required": ["template"] },
+          { "required": ["lookup"] }
+        ]
+      }
+    },
+    "tables": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "maxLength": 120 }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "from", "type"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "from": { "type": "string" },
+              "type": { "enum": ["number", "string", "object"] }
+            }
+          }
+        }
+      }
+    },
+    "card": {
+      "type": "object",
+      "required": ["template"],
+      "additionalProperties": false,
+      "properties": {
+        "template": {
+          "const": "card.svg.tmpl",
+          "$comment": "锁死文件名，杜绝路径逃逸"
+        }
+      }
+    }
+  }
+}

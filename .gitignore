@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+
+# Java build artifacts — never commit compiled output
+bridge/target/
+*.jar
+*.class

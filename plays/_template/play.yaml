@@ -1,0 +1,129 @@
+# ============================================================================
+# teslamate-llm-bridge Play Engine — 玩法模板（注释版）
+#
+# 一个玩法 = plays/<name>/ 目录：
+#   play.yaml      —— 本 manifest（必填，schema 见 ../play.schema.json）
+#   card.svg.tmpl  —— 分享卡 SVG 模板（声明 card: 时必填，1080×1080）
+#   fixtures.yaml  —— CI fixture：mock SQL 行 + 期望 compute 输出（强烈建议）
+#
+# 目录名必须与下方 name 一致；下划线开头目录（如本 _template）不会被引擎加载。
+# 引擎行为：启动扫描 → schema 校验 → SQL 门禁 → 表达式编译 → 模板 lint，
+# 任一步失败 log.warn 跳过该玩法（坏 play 不挡启动）。改动需重启生效（v1 无热加载）。
+# ============================================================================
+
+schema_version: 1
+
+# 玩法名：^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$，与目录名一致
+name: night-owl-example
+
+# 卡片标题（≤40 字符）
+title: 夜猫子指数
+
+# 可选 emoji（≤8 字符）
+emoji: "🦉"
+
+# LLM 友好描述（≤300 字符）：告诉 LLM 何时调用本玩法
+description: >-
+  示例玩法：统计窗口内夜间（22:00-05:00 本地时区）行驶占比，算 0-100 夜猫子指数。
+  用户问「我是不是夜猫子 / 晚上开车多吗」时调用。
+
+# v1 锁死 read:drives（schema 单值 enum；CAR_IDS whitelist 注册的前提）
+scope: read:drives
+
+params:
+  # 缺省时间窗（天），1..365；用户没传 start_date/end_date 时用
+  default_days: 30
+
+# 聚合 SQL：跑在 TeslaMate PG 只读事务里，5s 超时 / 100 行上限。
+# 绑定参数（引擎恒提供 4 个）：
+#   :car_id (long)  :tz (恒 'Asia/Shanghai')  :start / :end (timestamp)
+# 门禁：去注释后必须含真实租户过滤比较 `car_id = :car_id`（注释里 / 恒真式不算）；
+#       以 SELECT/WITH 开头；禁 ';'；禁 INSERT/UPDATE/DELETE/DROP/ALTER/
+#       CREATE/TRUNCATE/GRANT/COPY/DO/CALL/pg_sleep。
+# 习惯：聚合到恰好 1 行；引擎只读第一行，列名小写后进 compute 上下文。
+# ⚠️ 时区：TeslaMate 时间列（positions.date / drives.start_date 等）是 naive UTC
+#    timestamp，取本地小时/日期必须双重转换 `(col AT TIME ZONE 'UTC') AT TIME ZONE :tz`。
+#    单次 `col AT TIME ZONE :tz` 会把 UTC 值误读成本地时间，夜间窗口整体偏移 8 小时。
+sql: >-
+  SELECT
+    COUNT(*) AS sample_points,
+    COALESCE(SUM(CASE WHEN EXTRACT(HOUR FROM (date AT TIME ZONE 'UTC') AT TIME ZONE :tz) >= 22
+                        OR EXTRACT(HOUR FROM (date AT TIME ZONE 'UTC') AT TIME ZONE :tz) < 5
+                      THEN 1 ELSE 0 END), 0) AS night_points
+  FROM positions
+  WHERE car_id = :car_id
+    AND date BETWEEN :start AND :end
+    AND speed > 0
+
+# 采样 gate：field 是 SQL 返回列名；低于 min 返 unscored（卡片返灰色「数据不足」兜底）
+min_sample:
+  field: sample_points
+  min: 50
+
+# compute 顺序流水线 —— 四种步骤，后续步骤可引用前序 var、SQL 列、内置 window_days。
+compute:
+  # 1) expr：纯算术（+ - * / 括号、GREATEST/LEAST/ROUND）。除零返 0 + WARN。
+  - var: night_ratio
+    expr: "night_points / sample_points"
+
+  - var: score
+    expr: "LEAST(100, ROUND(night_ratio * 250))"
+
+  # 2) level：有序阈值映射（条件逻辑全走这里，表达式保持纯算术）。
+  #    首个 value < lt 命中即取 label；末项必须省 lt 作兜底。
+  - var: persona_key
+    level:
+      input: score
+      thresholds:
+        - lt: 20
+          label: early_bird
+        - lt: 60
+          label: balanced
+        - label: night_owl
+
+  # 3) lookup：字符串 key 查 tables；default 必填（key 未命中时兜底）。
+  - var: persona
+    lookup:
+      key: persona_key
+      table: personas
+      default:
+        name: 神秘车主
+        comment: 数据有点特别，再开几天看看。
+
+  # 4) template：字符串拼接 ${var}（数字自动去尾 .0）。
+  - var: summary
+    template: "夜猫子指数 ${score} 分，近 ${window_days} 天你是「${persona_key}」型车主。"
+
+# lookup 查表数据：table → key → field → string(≤120)
+tables:
+  personas:
+    early_bird:
+      name: 早起鸟
+      comment: 太阳还没起你已经在路上了。
+    balanced:
+      name: 作息均衡派
+      comment: 白天黑夜都安排得明明白白。
+    night_owl:
+      name: 夜猫子
+      comment: 城市的深夜路灯认得你的车牌。
+
+# JSON envelope 暴露字段（GET /api/v1/cars/{carId}/play/<name> 的 data.* ）。
+# from 引用 compute var（或 SQL 列）；type=number/string/object 运行时强校验。
+output:
+  fields:
+    - { name: score, from: score, type: number }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
+
+# 可选：分享卡。template 锁死文件名 card.svg.tmpl（杜绝路径逃逸）。
+# 模板内可用占位符：compute var / output 字段名 / 内置变量
+#   ${car_name} ${car_model} ${window_label} ${generated_at} ${window_days}
+#   （car_name/car_model/window_label/generated_at 仅 card 模板可用 ——
+#    compute 的 template 步骤引用会在加载期被拒）
+# 点路径可取 lookup object 的字段：${persona.name}
+# lint 拒绝：<script <foreignObject <!ENTITY <!DOCTYPE；任何 href/src 属性与
+#   url(...) 引用只允许文档内 '#id'；SVG 文本禁 emoji 等非 BMP 码位（渲染环境
+#   只有 Noto Sans CJK，无 emoji 字体，必然渲染成方框 —— emoji 放上面 emoji: 字段）
+# 排版约定：${car_name} 引擎保证 ≤ 12 个 code point（超长截断加 …），按此宽度排版
+card:
+  template: card.svg.tmpl

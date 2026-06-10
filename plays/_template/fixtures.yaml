@@ -1,0 +1,43 @@
+# ============================================================================
+# Play fixtures —— CI 用 mock SQL 行验证 compute 流水线可执行 + 输出正确。
+#
+# 为什么必填（强烈建议）：expr 编译期不校验标识符（SQL 列运行时才知道），
+# fixtures 是「SQL 列名 ↔ expr 标识符对得上」的唯一静态保证。没有 fixtures 的
+# play，列名 typo 要等真实请求 500 PLAY_COMPUTE_ERROR 才暴露。
+#
+# 格式约定（PlayRegistryTest 的 fixture runner 消费）：
+#   fixtures[]:
+#     name            —— fixture 名（CI 报错定位用）
+#     window_days     —— 注入内置 window_days（缺省 30）
+#     row             —— mock SQL 第一行（列名小写）；省略 = SQL 返 0 行
+#     expect_unscored —— true 时断言走 unscored 分支（row 采样数 < min_sample.min）
+#     expect          —— compute 结束后断言的 var → 期望值（number 按 ±0.001 比对；
+#                        object 用点路径写法 persona.name）
+# ============================================================================
+
+fixtures:
+  - name: normal-night-owl
+    window_days: 30
+    row:
+      sample_points: 1000
+      night_points: 400
+    expect:
+      score: 100
+      persona_key: night_owl
+      persona.name: 夜猫子
+      summary: "夜猫子指数 100 分，近 30 天你是「night_owl」型车主。"
+
+  - name: early-bird
+    window_days: 30
+    row:
+      sample_points: 1000
+      night_points: 40
+    expect:
+      score: 10
+      persona_key: early_bird
+
+  - name: insufficient-sample
+    row:
+      sample_points: 5
+      night_points: 0
+    expect_unscored: true

@@ -1,0 +1,66 @@
+# CI fixtures for early-bird.
+# Each fixture feeds a fake SQL result row through min_sample + the compute
+# pipeline and asserts the resulting vars. Expected values are hand-computed
+# from play.yaml — see docs/play-manifest-spec.md §8.
+# Format matches the engine's fixture runner (top-level `fixtures:`,
+# below-threshold cases marked `expect_unscored: true`).
+fixtures:
+  - name: too-few-drives
+    window_days: 30
+    row:
+      total_drives: 3
+      peak_drives: 1
+      # total_drives 3 < min_sample.min 5 → unscored
+    expect_unscored: true
+
+  - name: free-spirit
+    window_days: 30
+    row:
+      total_drives: 20
+      peak_drives: 1
+      # peak_ratio = ROUND(1*100 / GREATEST(20,1)) = ROUND(5.0) = 5
+      # score = LEAST(GREATEST(5,0),100) = 5
+      # 5 < 15 → "自由职业佬"
+    expect:
+      peak_ratio: 5
+      score: 5
+      persona_label: "自由职业佬"
+
+  - name: occasional-early-riser
+    window_days: 30
+    row:
+      total_drives: 10
+      peak_drives: 3
+      # peak_ratio = ROUND(3*100 / GREATEST(10,1)) = ROUND(30.0) = 30
+      # score = LEAST(GREATEST(30,0),100) = 30
+      # 30 >= 15, 30 < 35 → "偶尔早起人"
+    expect:
+      peak_ratio: 30
+      score: 30
+      persona_label: "偶尔早起人"
+
+  - name: diligent-commuter
+    window_days: 30
+    row:
+      total_drives: 25
+      peak_drives: 12
+      # peak_ratio = ROUND(12*100 / GREATEST(25,1)) = ROUND(1200/25) = ROUND(48.0) = 48
+      # score = LEAST(GREATEST(48,0),100) = 48
+      # 48 >= 35, 48 < 60 → "打工积极分子"
+    expect:
+      peak_ratio: 48
+      score: 48
+      persona_label: "打工积极分子"
+
+  - name: peak-hour-king
+    window_days: 30
+    row:
+      total_drives: 30
+      peak_drives: 18
+      # peak_ratio = ROUND(18*100 / GREATEST(30,1)) = ROUND(1800/30) = ROUND(60.0) = 60
+      # score = LEAST(GREATEST(60,0),100) = 60
+      # 60 is NOT < 60 → catch-all → "早起内卷王"
+    expect:
+      peak_ratio: 60
+      score: 60
+      persona_label: "早起内卷王"

@@ -1,0 +1,72 @@
+# Play: early-bird — 早起鸟指数
+# Spec: docs/play-manifest-spec.md · Schema: plays/play.schema.json
+schema_version: 1
+name: early-bird
+title: "早起鸟指数"
+emoji: "🐦"
+description: >-
+  Are you an early-morning commuter or a free-spirited night owl? Share of drives
+  started during the morning rush hour (06:00–09:00 local time) over the analysis
+  window, distilled into a 0-100 score and a persona. 早高峰出行占比 + 打工人画像。
+scope: read:drives
+params:
+  default_days: 30
+
+# One read-only aggregation, exactly one result row.
+# Bind params provided by the engine: :car_id (long), :tz (Asia/Shanghai),
+# :start / :end (UTC timestamps of the analysis window).
+sql: |
+  WITH local_drives AS (
+    SELECT
+      start_date AT TIME ZONE 'UTC' AT TIME ZONE :tz AS local_start
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date <  :end
+  )
+  SELECT
+    COUNT(*) AS total_drives,
+    COALESCE(COUNT(*) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 6
+        AND EXTRACT(HOUR FROM local_start) <  9
+    ), 0) AS peak_drives
+  FROM local_drives
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 1) share of drives in morning rush hour (percent, integer)
+  - var: peak_ratio
+    expr: "ROUND(peak_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 2) score: same as ratio (0-100), clamp for safety
+  - var: score
+    expr: "LEAST(GREATEST(peak_ratio, 0), 100)"
+
+  # 3) persona level (first lt hit wins; last entry is catch-all)
+  - var: persona_label
+    level:
+      input: score
+      thresholds:
+        - lt: 15
+          label: "自由职业佬"
+        - lt: 35
+          label: "偶尔早起人"
+        - lt: 60
+          label: "打工积极分子"
+        - label: "早起内卷王"
+
+  # 4) one-line summary
+  - var: summary
+    template: "过去 ${window_days} 天，你有 ${peak_ratio}% 的行程在早高峰 6–9 点出发，早起鸟指数 ${score}/100，人设：${persona_label}"
+
+output:
+  fields:
+    - { name: score,         from: score,         type: number }
+    - { name: peak_ratio,    from: peak_ratio,    type: number }
+    - { name: persona_label, from: persona_label, type: string }
+    - { name: summary,       from: summary,       type: string }
+    - { name: peak_drives,   from: peak_drives,   type: number }
+    - { name: total_drives,  from: total_drives,  type: number }

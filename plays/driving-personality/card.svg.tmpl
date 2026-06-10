@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- 驾驶人格十六型分享卡：1080×1080，深色渐变 + 超大人格码 + 四轴条形 + 自嘲徽章 + 水印。
+       占位符由引擎注入并 XML 转义；条形宽度 bar_* 为 compute 数值 var（轨道 540px）。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1b2a"/>
+      <stop offset="0.55" stop-color="#13233a"/>
+      <stop offset="1" stop-color="#1b263b"/>
+    </linearGradient>
+    <linearGradient id="codegrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <!-- 品牌区 -->
+  <text x="540" y="86" text-anchor="middle" fill="#f1f5f9" font-size="52" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">电车有数 · 驾驶人格</text>
+  <text x="540" y="138" text-anchor="middle" fill="#94a3b8" font-size="26"
+        font-family="Noto Sans CJK SC,sans-serif">${window_label}行车数据 · 四轴十六型</text>
+  <line x1="120" y1="176" x2="960" y2="176" stroke="#334155" stroke-width="2"/>
+
+  <!-- 超大人格码 -->
+  <text x="540" y="252" text-anchor="middle" fill="#64748b" font-size="28"
+        font-family="Noto Sans CJK SC,sans-serif">你的驾驶人格码</text>
+  <text x="540" y="448" text-anchor="middle" fill="url(#codegrad)" font-size="200" font-weight="bold"
+        letter-spacing="16" font-family="Noto Sans CJK SC,sans-serif">${code}</text>
+
+  <!-- 人格名 + 一句话画像 -->
+  <text x="540" y="536" text-anchor="middle" fill="#fbbf24" font-size="56" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${persona.name}</text>
+  <text x="540" y="598" text-anchor="middle" fill="#cbd5e1" font-size="28"
+        font-family="Noto Sans CJK SC,sans-serif">${persona.desc}</text>
+
+  <!-- 自嘲徽章 -->
+  <rect x="240" y="630" width="600" height="58" rx="29" fill="#27364d" stroke="#475569" stroke-width="1.5"/>
+  <text x="540" y="668" text-anchor="middle" fill="#93c5fd" font-size="27"
+        font-family="Noto Sans CJK SC,sans-serif">${persona.tag}</text>
+
+  <!-- 四轴图例 -->
+  <text x="540" y="728" text-anchor="middle" fill="#64748b" font-size="22"
+        font-family="Noto Sans CJK SC,sans-serif">F 猛 / C 佛 · N 夜 / D 昼 · L 长途 / S 短途 · E 高频 / O 低频</text>
+
+  <!-- 轴 1：动力 -->
+  <text x="120" y="776" fill="#94a3b8" font-size="26" font-family="Noto Sans CJK SC,sans-serif">动力</text>
+  <rect x="230" y="759" width="540" height="22" rx="11" fill="#243349"/>
+  <rect x="230" y="759" width="${bar_vigor}" height="22" rx="11" fill="#f87171"/>
+  <text x="790" y="776" fill="#e2e8f0" font-size="24" font-family="Noto Sans CJK SC,sans-serif">${vigor}</text>
+  <text x="985" y="780" text-anchor="middle" fill="#f87171" font-size="40" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_power}</text>
+
+  <!-- 轴 2：作息 -->
+  <text x="120" y="832" fill="#94a3b8" font-size="26" font-family="Noto Sans CJK SC,sans-serif">作息</text>
+  <rect x="230" y="815" width="540" height="22" rx="11" fill="#243349"/>
+  <rect x="230" y="815" width="${bar_night}" height="22" rx="11" fill="#a78bfa"/>
+  <text x="790" y="832" fill="#e2e8f0" font-size="24" font-family="Noto Sans CJK SC,sans-serif">${night_pct}%</text>
+  <text x="985" y="836" text-anchor="middle" fill="#a78bfa" font-size="40" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_time}</text>
+
+  <!-- 轴 3：半径 -->
+  <text x="120" y="888" fill="#94a3b8" font-size="26" font-family="Noto Sans CJK SC,sans-serif">半径</text>
+  <rect x="230" y="871" width="540" height="22" rx="11" fill="#243349"/>
+  <rect x="230" y="871" width="${bar_dist}" height="22" rx="11" fill="#60a5fa"/>
+  <text x="790" y="888" fill="#e2e8f0" font-size="24" font-family="Noto Sans CJK SC,sans-serif">${avg_km}km</text>
+  <text x="985" y="892" text-anchor="middle" fill="#60a5fa" font-size="40" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_dist}</text>
+
+  <!-- 轴 4：频率 -->
+  <text x="120" y="944" fill="#94a3b8" font-size="26" font-family="Noto Sans CJK SC,sans-serif">频率</text>
+  <rect x="230" y="927" width="540" height="22" rx="11" fill="#243349"/>
+  <rect x="230" y="927" width="${bar_freq}" height="22" rx="11" fill="#34d399"/>
+  <text x="790" y="944" fill="#e2e8f0" font-size="24" font-family="Noto Sans CJK SC,sans-serif">${freq_pct}%</text>
+  <text x="985" y="948" text-anchor="middle" fill="#34d399" font-size="40" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_freq}</text>
+
+  <!-- 底部信息条 + 水印 -->
+  <line x1="120" y1="982" x2="960" y2="982" stroke="#334155" stroke-width="1.5"/>
+  <text x="140" y="1026" fill="#94a3b8" font-size="22"
+        font-family="Noto Sans CJK SC,sans-serif">${car_name} · ${window_label} · ${generated_at}</text>
+  <text x="940" y="1026" text-anchor="end" fill="#64748b" font-size="22"
+        font-family="Noto Sans CJK SC,sans-serif">${watermark}</text>
+</svg>

@@ -1,0 +1,49 @@
+# CI fixtures for night-owl.
+# Each fixture feeds a fake SQL result row through min_sample + the compute
+# pipeline and asserts the resulting vars. Expected values are hand-computed
+# from play.yaml — see docs/play-manifest-spec.md §8.
+# Format matches the engine's fixture runner (top-level `fixtures:`,
+# below-threshold cases marked `expect_unscored: true`).
+fixtures:
+  - name: heavy-night-owl
+    window_days: 30
+    row:
+      total_drives: 40
+      night_drives: 22
+      night_km: 310.5
+    expect:
+      night_ratio: 55          # ROUND(22*100/40)
+      owl_score: 97            # LEAST(ROUND(55*1.2 + 310.5/10), 100) = ROUND(97.05)
+      bar_width: 776           # 97*8
+      owl_title: "终极夜猫子"
+      summary: "过去 30 天，你有 55% 的行程发生在 23:00–05:00，夜猫子指数 97/100"
+
+  - name: early-bird
+    window_days: 30
+    row:
+      total_drives: 25
+      night_drives: 2
+      night_km: 8.4
+    expect:
+      night_ratio: 8           # ROUND(2*100/25)
+      owl_score: 10            # LEAST(ROUND(8*1.2 + 0.84), 100) = ROUND(10.44)
+      owl_title: "早睡模范生"
+
+  - name: mid-tier-night-rider
+    window_days: 30
+    row:
+      total_drives: 30
+      night_drives: 10
+      night_km: 95.0
+    expect:
+      night_ratio: 33          # ROUND(1000/30) = ROUND(33.33)
+      owl_score: 49            # LEAST(ROUND(33*1.2 + 9.5), 100) = ROUND(49.1)
+      owl_title: "资深夜行侠"
+
+  - name: too-few-drives
+    window_days: 30
+    row:
+      total_drives: 3
+      night_drives: 1
+      night_km: 12.0
+    expect_unscored: true   # total_drives 3 < min_sample.min 5

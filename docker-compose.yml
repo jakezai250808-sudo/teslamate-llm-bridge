@@ -1,0 +1,19 @@
+services:
+  bridge:
+    build: .
+    ports:
+      - "8770:8770"
+    environment:
+      # Point at your existing TeslaMate PostgreSQL instance
+      TM_DB_HOST: ${TM_DB_HOST:-localhost}
+      TM_DB_PORT: ${TM_DB_PORT:-5432}
+      TM_DB_NAME: ${TM_DB_NAME:-teslamate}
+      TM_DB_USER: ${TM_DB_USER:-teslamate}
+      TM_DB_PASS: ${TM_DB_PASS:-}
+      # Optional: restrict to specific car IDs (comma-separated)
+      CAR_IDS: ${CAR_IDS:-}
+      # Optional: require Bearer token on /api/** endpoints
+      API_TOKEN: ${API_TOKEN:-}
+      # Optional: external plays directory (mounted below)
+      PLAYS_DIR: ${PLAYS_DIR:-}
+    restart: unless-stopped

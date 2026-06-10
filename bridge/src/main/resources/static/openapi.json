@@ -1,0 +1,303 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "teslamate-llm-bridge",
+    "description": "Declarative play framework over TeslaMate data — scoring, personas, and share cards for LLM platforms.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8770",
+      "description": "Local self-hosted instance"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1/plays": {
+      "get": {
+        "operationId": "listPlays",
+        "summary": "List available plays",
+        "description": "Returns metadata for every play loaded by the engine (name, title, emoji, description, default time window, whether a share card is available).",
+        "responses": {
+          "200": {
+            "description": "List of plays",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaysListResponse"
+                },
+                "example": {
+                  "data": {
+                    "plays": [
+                      {
+                        "name": "driving-personality",
+                        "title": "驾驶人格十六型",
+                        "emoji": "🧬",
+                        "description": "16-type driving personality — vigor, night-driving, radius, frequency axes produce a 4-letter code (e.g. FNLE) with a Chinese persona name and one-liner.",
+                        "scope": "read:drives",
+                        "default_days": 30,
+                        "has_card": true
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/cars/{carId}/play/{playName}": {
+      "get": {
+        "operationId": "runPlay",
+        "summary": "Run a play for a car",
+        "description": "Executes the named play against the given car's TeslaMate data for the requested time window and returns a structured JSON result. If the car has fewer data points than the play's `min_sample`, `scored` is `false` and no result fields are returned.",
+        "parameters": [
+          {
+            "name": "carId",
+            "in": "path",
+            "required": true,
+            "description": "TeslaMate car ID (integer, see the `cars` table).",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "playName",
+            "in": "path",
+            "required": true,
+            "description": "Play name (kebab-case, matches the play folder name).",
+            "schema": {
+              "type": "string",
+              "example": "driving-personality"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "description": "Window start (ISO 8601 date or datetime). Defaults to `end_date − default_days`.",
+            "schema": {
+              "type": "string",
+              "example": "2026-05-01"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "description": "Window end (ISO 8601 date or datetime). Defaults to now.",
+            "schema": {
+              "type": "string",
+              "example": "2026-06-01"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Play result (scored or unscored)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayResultResponse"
+                },
+                "examples": {
+                  "scored": {
+                    "summary": "Scored result",
+                    "value": {
+                      "data": {
+                        "play": "driving-personality",
+                        "scored": true,
+                        "window_days": 30,
+                        "code": "CNSO",
+                        "persona": {
+                          "name": "深夜静音幽灵",
+                          "desc": "很少出动，一动就是深夜悄悄滑过街角。",
+                          "tag": "#电机声都嫌吵"
+                        },
+                        "summary": "近 30 天驾驶人格 CNSO：夜驾 18%、地板电时刻 4%、单程均 9.3 公里、出车率 52%。"
+                      }
+                    }
+                  },
+                  "unscored": {
+                    "summary": "Not enough data",
+                    "value": {
+                      "data": {
+                        "play": "driving-personality",
+                        "scored": false,
+                        "sample": 87,
+                        "min_sample": 200
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/cars/{carId}/play/{playName}/card.png": {
+      "get": {
+        "operationId": "renderPlayCard",
+        "summary": "Render a play's share card (PNG)",
+        "description": "Renders the play's SVG template with computed data and returns a 1080×1080 PNG image. Returns 404 if the play has no card. Supports `If-None-Match` / `ETag` for caching.",
+        "parameters": [
+          {
+            "name": "carId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "playName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "driving-personality"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "1080×1080 PNG share card",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not Modified (ETag matched)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Set `API_TOKEN` env var to require this token. Omit the env var for unauthenticated local access."
+      }
+    },
+    "schemas": {
+      "PlaysListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "plays": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PlayMeta"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PlayMeta": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "title": { "type": "string" },
+          "emoji": { "type": "string" },
+          "description": { "type": "string" },
+          "scope": { "type": "string" },
+          "default_days": { "type": "integer" },
+          "has_card": { "type": "boolean" }
+        }
+      },
+      "PlayResultResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "play": { "type": "string" },
+              "scored": { "type": "boolean" },
+              "window_days": { "type": "integer", "description": "Present when scored=true" },
+              "sample": { "type": "integer", "description": "Present when scored=false" },
+              "min_sample": { "type": "integer", "description": "Present when scored=false" }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid Bearer token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "UNAUTHORIZED" }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Car ID not in whitelist or play not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

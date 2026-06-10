@@ -1,0 +1,99 @@
+# ============================================================================
+# driving-personality fixtures —— CI（PlayRegistryTest.repoPlays_loadAndFixturesAllPass）
+# 用 mock SQL 行验证 compute 流水线可执行 + 四轴/人格码/查表/摘要全对。
+# ============================================================================
+
+fixtures:
+  # 激进夜车党：vigor = ROUND(punch_pct 8 * 6 + avg_speed 52 / 4) = 61 ≥30 (F)；
+  # 夜驾 40% ≥10 (N)；单程 36.8km ≥12 (L)；活跃 24/30 天 = 80% ≥60 (E) → FNLE 午夜高速战神
+  - name: aggressive-night-owl
+    window_days: 30
+    row:
+      sample_points: 1800
+      night_points: 720
+      avg_speed_kmh: 52.4
+      punch_points: 144
+      drive_count: 45
+      avg_drive_km: 36.8
+      active_days: 24
+    expect:
+      night_pct: 40
+      punch_pct: 8
+      avg_speed: 52
+      avg_km: 36.8
+      vigor: 61
+      freq_pct: 80
+      dist_pct: 92
+      axis_power: "F"
+      axis_time: "N"
+      axis_dist: "L"
+      axis_freq: "E"
+      code: "FNLE"
+      persona.name: 午夜高速战神
+      persona.tag: "#服务区VIP年卡用户"
+      bar_vigor: 329.4   # 61 * 540 / 100
+      summary: "近 30 天驾驶人格 FNLE：夜驾 40%、地板电时刻 8%、单程均 36.8 公里、出车率 80%。"
+
+  # 规律通勤族：vigor = ROUND(1*6 + 30/4) = ROUND(13.5) = 14 <30 (C)；夜驾 4% <10 (D)；
+  # 单程 9.2km <12 (S)；活跃 26/30 天 = 87% ≥60 (E) → CDSE 通勤永动机
+  - name: steady-commuter
+    window_days: 30
+    row:
+      sample_points: 2400
+      night_points: 96
+      avg_speed_kmh: 29.7
+      punch_points: 24
+      drive_count: 52
+      avg_drive_km: 9.2
+      active_days: 26
+    expect:
+      night_pct: 4
+      punch_pct: 1
+      vigor: 14
+      avg_km: 9.2
+      dist_pct: 23
+      freq_pct: 87
+      axis_power: "C"
+      axis_time: "D"
+      axis_dist: "S"
+      axis_freq: "E"
+      code: "CDSE"
+      persona.name: 通勤永动机
+      summary: "近 30 天驾驶人格 CDSE：夜驾 4%、地板电时刻 1%、单程均 9.2 公里、出车率 87%。"
+
+  # 假日佛系远征军：高速巡航但不暴力 vigor = ROUND(1*6 + 64/4) = 22 <30 (C)、白天、
+  # 单程 120.5km（dist_pct 封顶 100）、活跃 6/30 天 = 20% <60 (O) → CDLO；覆盖 LEAST 封顶 + O 档
+  - name: holiday-zen-cruiser
+    window_days: 30
+    row:
+      sample_points: 600
+      night_points: 30
+      avg_speed_kmh: 64.2
+      punch_points: 6
+      drive_count: 10
+      avg_drive_km: 120.5
+      active_days: 6
+    expect:
+      night_pct: 5
+      vigor: 22
+      avg_km: 120.5
+      dist_pct: 100
+      freq_pct: 20
+      axis_power: "C"
+      axis_time: "D"
+      axis_dist: "L"
+      axis_freq: "O"
+      code: "CDLO"
+      persona.name: 假日佛系远征军
+
+  # 数据不足：sample_points 120 < min_sample 200 → unscored（卡片走灰色兜底）
+  - name: insufficient-sample
+    row:
+      sample_points: 120
+      night_points: 10
+      avg_speed_kmh: 30
+      punch_points: 2
+      drive_count: 3
+      avg_drive_km: 5
+      active_days: 2
+    expect_unscored: true
