@@ -67,9 +67,12 @@ Anthropic 目前**没有图像生成模型**。Claude Code 本身无法生图，
    把 play JSON + creative-prompt 模板发给对方，在 ChatGPT 里生图后发回图片。
 
 **Gemini flash image 为何不作为纯 Claude 玩家的首选：**
-见下方 [Gemini 实测结论](#gemini-实测结论)——免费层按 GCP project 共享，
-一旦耗尽（项目累积调用较多后很快发生），所有模型含 text 全部 429，
-需要新建账号 + 新 project 才能恢复，稳定性差于 Qwen 付费层。
+2026-06-10 实测定论：**Gemini 图像模型没有免费层**。全新 GCP project +
+全新 API key（零历史调用）调 `gemini-2.5-flash-image` 依然返回
+`429 generate_content_free_tier_requests, limit: 0`——limit:0 是设计而非耗尽，
+换 project / 换 key 无解，必须给 project 绑卡开 GCP billing（且 Google AI Pro
+订阅不含 API 配额）。仅推荐给已有 GCP billing 的海外玩家；国内玩家直接用上面的
+火山 Seedream（免费 200 张 + 直连）。
 
 ---
 
