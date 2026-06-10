@@ -60,6 +60,15 @@ public class PlayCardRenderer {
     this.watermark = watermark == null ? "" : watermark;
   }
 
+  /**
+   * 当前水印文字（空字符串 = 不显示水印）。
+   *
+   * <p>供 controller 注入模板变量 {@code ${watermark}}（设计定稿 §2.3）。
+   */
+  public String watermark() {
+    return watermark;
+  }
+
   /** 渲染失败（Batik 转码错 / 变量解析错）。controller 层转 500 problem+json。 */
   public static class PlayRenderException extends RuntimeException {
     public PlayRenderException(String message, Throwable cause) {

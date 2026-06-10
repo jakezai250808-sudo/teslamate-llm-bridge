@@ -95,6 +95,43 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!--
+              build-helper: 把 play-engine-core（git subtree vendoring）的源码目录
+              追加到编译路径，使 bridge pom 无需多模块结构即可消费核心引擎。
+              单向关系：SaaS → play-engine-core（权威源）→ bridge（vendored 镜像）。
+              更新路径：SaaS 侧 git subtree split + push；bridge 侧 git subtree pull
+              拉最新 core，本 pom 自动扫到变更，无需手动 bump 版本。
+              trade-off：选 vendoring 而非 Maven 多模块，原因是 bridge 是单体 Spring Boot
+              jar，引入多模块需要新建根 pom + 改 Dockerfile + 改 CI，代价远大于 build-helper
+              加一个 sourceDirectory（个人维护项目精力约束 § 方案评估）。
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-play-engine-core-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <!-- play-engine-core vendored via git subtree (../play-engine-core) -->
+                                <source>../play-engine-core/src/main/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <!-- NOTE: play-engine-core test sources are intentionally NOT added here.
+                         bridge has its own equivalent test suite (PlayEngineTest,
+                         PlayRegistryTest, PlayControllerTest) that covers the same engine
+                         behavior with bridge-appropriate test paths and mock wiring.
+                         Adding core test sources would duplicate tests and cause path-
+                         resolution failures (repoTemplateDir uses ".." relative to core's
+                         module root, not bridge's). -->
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

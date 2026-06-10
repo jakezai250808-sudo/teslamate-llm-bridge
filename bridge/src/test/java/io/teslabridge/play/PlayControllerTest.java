@@ -8,6 +8,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.teslamate.play.CarWhitelistProvider;
+import io.teslamate.play.PlayAuditLogger;
+import io.teslamate.play.PlayCardRenderer;
+import io.teslamate.play.PlayDefinition;
+import io.teslamate.play.PlayEngine;
+import io.teslamate.play.PlayLoader;
+import io.teslamate.play.PlayRegistry;
+import io.teslamate.play.PlayScopeChecker;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -50,7 +58,13 @@ class PlayControllerTest {
     private final PlayRegistry registry = mock(PlayRegistry.class);
     private final PlayEngine engine = mock(PlayEngine.class);
     private final PlayCardRenderer renderer = mock(PlayCardRenderer.class);
-    private final PlayController controller = new PlayController(registry, engine, renderer);
+    // bridge 三接口实现：NoopPlayScopeChecker(永远false) + LogPlayAuditLogger + EnvCarWhitelistProvider
+    // 测试中用简单 lambda stub，与真实 bridge 实现语义一致
+    private final CarWhitelistProvider whitelist = carId -> false; // allow all
+    private final PlayAuditLogger audit = path -> {}; // no-op
+    private final PlayScopeChecker scope = play -> false; // always allow
+    private final PlayController controller =
+            new PlayController(registry, engine, renderer, whitelist, audit, scope);
 
     private final PlayDefinition play =
             PlayLoader.load(

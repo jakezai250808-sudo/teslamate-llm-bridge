@@ -8,6 +8,14 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.teslamate.play.PlayComputeEngine;
+import io.teslamate.play.PlayComputeException;
+import io.teslamate.play.PlayDefinition;
+import io.teslamate.play.PlayEngine;
+import io.teslamate.play.PlayExpr;
+import io.teslamate.play.PlayLoadException;
+import io.teslamate.play.PlayLoader;
+
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;

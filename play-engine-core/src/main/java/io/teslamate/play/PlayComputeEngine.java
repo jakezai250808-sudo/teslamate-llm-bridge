@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>运行时未知标识符 / 类型不符 → {@link PlayComputeException}（→ 500 PLAY_COMPUTE_ERROR）。
  */
-final class PlayComputeEngine {
+public final class PlayComputeEngine {
 
   private static final Logger log = LoggerFactory.getLogger(PlayComputeEngine.class);
 
@@ -43,7 +43,7 @@ final class PlayComputeEngine {
    * @param windowDays 内置变量 {@code window_days}
    * @return ctx：SQL 列 + window_days + 全部 compute var（LinkedHashMap 保序）
    */
-  static Map<String, Object> run(PlayDefinition play, Map<String, Object> row, long windowDays) {
+  public static Map<String, Object> run(PlayDefinition play, Map<String, Object> row, long windowDays) {
     Map<String, Object> ctx = new LinkedHashMap<>();
     for (Map.Entry<String, Object> e : row.entrySet()) {
       ctx.put(e.getKey().toLowerCase(Locale.ROOT), e.getValue());
@@ -93,7 +93,7 @@ final class PlayComputeEngine {
   }
 
   /** {@code ${var}} 替换：var 须存在于 ctx（未知 → PlayComputeException）。 */
-  static String substitute(String template, Map<String, Object> ctx) {
+  public static String substitute(String template, Map<String, Object> ctx) {
     Matcher m = PLACEHOLDER_RE.matcher(template);
     StringBuilder sb = new StringBuilder();
     while (m.find()) {
@@ -112,8 +112,13 @@ final class PlayComputeEngine {
     return ctx.get(ident);
   }
 
-  /** 数字格式化：整值去尾 {@code .0}（86.0 → "86"），其余保留两位内有效小数。 */
-  static String formatValue(Object v) {
+  /**
+   * 数字格式化：整值去尾 {@code .0}（86.0 → "86"），其余保留两位内有效小数。
+   *
+   * <p>{@code public} 访问：供 controller 层（可能在不同 package 如 bridge）格式化 output
+   * 字段值（{@code output.type=string} 场景）。
+   */
+  public static String formatValue(Object v) {
     if (v == null) return "";
     if (v instanceof Number n) {
       double d = n.doubleValue();

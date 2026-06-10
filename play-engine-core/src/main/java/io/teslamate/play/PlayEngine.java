@@ -73,8 +73,13 @@ public class PlayEngine {
     this.readOnlyTx = tx;
   }
 
-  /** 测试构造器：直接注入 mock 的 named template + tx template。 */
-  PlayEngine(NamedParameterJdbcTemplate jdbc, TransactionTemplate readOnlyTx) {
+  /**
+   * 测试构造器：直接注入 mock 的 named template + tx template。
+   *
+   * <p>{@code public} 访问：供外部包（如 bridge 测试）mock 注入；生产代码应走
+   * {@link #PlayEngine(JdbcTemplate, PlatformTransactionManager)}。
+   */
+  public PlayEngine(NamedParameterJdbcTemplate jdbc, TransactionTemplate readOnlyTx) {
     this.jdbc = jdbc;
     this.readOnlyTx = readOnlyTx;
   }

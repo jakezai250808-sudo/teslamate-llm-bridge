@@ -1,8 +1,14 @@
 package io.teslabridge.play;
 
-
-import io.teslabridge.support.BridgeSupport;
-import io.teslabridge.play.PlayDefinition.OutputField;
+import io.teslamate.play.CarWhitelistProvider;
+import io.teslamate.play.PlayAuditLogger;
+import io.teslamate.play.PlayCardRenderer;
+import io.teslamate.play.PlayComputeException;
+import io.teslamate.play.PlayDefinition;
+import io.teslamate.play.PlayDefinition.OutputField;
+import io.teslamate.play.PlayEngine;
+import io.teslamate.play.PlayRegistry;
+import io.teslamate.play.PlayScopeChecker;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -48,6 +54,14 @@ import org.springframework.web.bind.annotation.RestController;
  * → 查 SQL → {@code min_sample} 不足返 unscored → compute → envelope {@code Map.of("data", ...)}。
  *
  * <p>鉴权由 {@link io.teslabridge.auth.StaticTokenFilter} 处理（Bearer API_TOKEN）。
+ *
+ * <p>三个 SaaS/bridge 差异点通过接口注入（均来自 play-engine-core，bridge 侧
+ * bean 在同包 {@code io.teslabridge.play} 里）：
+ * <ul>
+ *   <li>{@link CarWhitelistProvider} → {@link EnvCarWhitelistProvider}（读 CAR_IDS env）
+ *   <li>{@link PlayAuditLogger} → {@link LogPlayAuditLogger}（log.info）
+ *   <li>{@link PlayScopeChecker} → {@link NoopPlayScopeChecker}（永远 false）
+ * </ul>
  */
 @RestController
 public class PlayController {
@@ -69,21 +83,36 @@ public class PlayController {
     /** 卡片 generated_at 内置变量的时区（与 :tz 一致）。 */
     private static final ZoneId CARD_TZ = ZoneId.of("Asia/Shanghai");
 
+    /** 404 占位体（与 SaaS 侧跨租户同语，不泄露资源存在性）。 */
+    private static final Map<String, Object> NO_INFO = Map.of("data", Map.of());
+
     private final PlayRegistry registry;
     private final PlayEngine engine;
     private final PlayCardRenderer renderer;
+    private final CarWhitelistProvider carWhitelistProvider;
+    private final PlayAuditLogger auditLogger;
+    private final PlayScopeChecker scopeChecker;
 
-    public PlayController(PlayRegistry registry, PlayEngine engine, PlayCardRenderer renderer) {
+    public PlayController(
+            PlayRegistry registry,
+            PlayEngine engine,
+            PlayCardRenderer renderer,
+            CarWhitelistProvider carWhitelistProvider,
+            PlayAuditLogger auditLogger,
+            PlayScopeChecker scopeChecker) {
         this.registry = registry;
         this.engine = engine;
         this.renderer = renderer;
+        this.carWhitelistProvider = carWhitelistProvider;
+        this.auditLogger = auditLogger;
+        this.scopeChecker = scopeChecker;
     }
 
     // ====== 1) GET /api/v1/plays ======
 
     @GetMapping("/api/v1/plays")
     public ResponseEntity<Map<String, Object>> listPlays() {
-        BridgeSupport.auditApiCall("/api/v1/plays");
+        auditLogger.log("/api/v1/plays");
         List<Map<String, Object>> plays = new ArrayList<>();
         for (PlayDefinition p : registry.all()) {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -107,18 +136,24 @@ public class PlayController {
             @PathVariable("playName") String playName,
             @RequestParam(value = "start_date", required = false) String startDate,
             @RequestParam(value = "end_date", required = false) String endDate) {
-        BridgeSupport.auditApiCall("/api/v1/cars/" + carId + "/play/" + safeAuditName(playName));
+        auditLogger.log("/api/v1/cars/" + carId + "/play/" + safeAuditName(playName));
         // defense-in-depth: CAR_IDS whitelist check is fail-closed; 404 status matches
         // unlisted-car response to prevent status-code information leakage.
-        if (BridgeSupport.carIdOutOfWhitelist(carId)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(BridgeSupport.NO_INFO);
+        if (carWhitelistProvider.outOfWhitelist(carId)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(NO_INFO);
         }
         Optional<PlayDefinition> found = lookupPlay(playName);
         if (found.isEmpty()) {
             // 未注册与跨租户同语 404 NO_INFO —— 不泄露玩法存在性。
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(BridgeSupport.NO_INFO);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(NO_INFO);
         }
         PlayDefinition play = found.get();
+
+        // scope 校验（bridge 侧 NoopPlayScopeChecker 永远 false，不影响请求）
+        if (scopeChecker.insufficientScope(play)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "INSUFFICIENT_SCOPE"));
+        }
 
         Window w = resolveWindow(play, startDate, endDate);
 
@@ -173,9 +208,9 @@ public class PlayController {
             @RequestParam(value = "start_date", required = false) String startDate,
             @RequestParam(value = "end_date", required = false) String endDate,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        BridgeSupport.auditApiCall(
+        auditLogger.log(
                 "/api/v1/cars/" + carId + "/play/" + safeAuditName(playName) + "/card.png");
-        if (BridgeSupport.carIdOutOfWhitelist(carId)) {
+        if (carWhitelistProvider.outOfWhitelist(carId)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
         Optional<PlayDefinition> found = lookupPlay(playName);
@@ -183,6 +218,10 @@ public class PlayController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
         PlayDefinition play = found.get();
+
+        if (scopeChecker.insufficientScope(play)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
 
         Window w = resolveWindow(play, startDate, endDate);
 
@@ -329,15 +368,7 @@ public class PlayController {
      * 卡片内置变量（设计定稿 §2.3）：car_name / car_model / window_label / generated_at /
      * watermark。
      *
-     * <p>{@code watermark} 来自 {@code bridge.card-watermark} 配置，默认空字符串（模板可选渲染）。
-     */
-    private void addBuiltinCardVars(Map<String, Object> vars, long carId, long windowDays) {
-        addBuiltinCardVarsWithLabel(vars, engine.carLabel(carId), windowDays);
-    }
-
-    /**
-     * 卡片内置变量注入（使用已预拉取的 {@link PlayEngine.CarLabel}）。
-     * ETag 修复：renderPlayCard Scored 分支复用 ETag 计算时已拉取的 carLabel，避免二次 DB 查询。
+     * <p>{@code watermark} 来自 {@code play.card-watermark} 配置，默认空字符串（模板可选渲染）。
      */
     private void addBuiltinCardVarsWithLabel(
             Map<String, Object> vars, PlayEngine.CarLabel car, long windowDays) {
@@ -369,7 +400,7 @@ public class PlayController {
                 }
                 yield v;
             }
-            case "string" -> PlayComputeEngine.formatValue(v);
+            case "string" -> io.teslamate.play.PlayComputeEngine.formatValue(v);
             case "object" -> {
                 if (!(v instanceof Map)) {
                     throw new PlayComputeException(

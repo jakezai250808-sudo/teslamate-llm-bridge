@@ -16,6 +16,12 @@ bridge:
   # Leave blank to omit the watermark. Example: "my-bridge.example.com"
   card-watermark: ${CARD_WATERMARK:}
 
+# play-engine-core renderer uses play.card-watermark (neutral config key).
+# Bridge deployments already using CARD_WATERMARK env continue to work unchanged:
+#   CARD_WATERMARK → bridge.card-watermark → play.card-watermark
+play:
+  card-watermark: ${bridge.card-watermark:}
+
 management:
   endpoints:
     web:

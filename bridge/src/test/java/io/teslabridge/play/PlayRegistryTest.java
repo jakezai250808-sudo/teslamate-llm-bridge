@@ -3,6 +3,11 @@ package io.teslabridge.play;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import io.teslamate.play.PlayComputeEngine;
+import io.teslamate.play.PlayDefinition;
+import io.teslamate.play.PlayLoader;
+import io.teslamate.play.PlayRegistry;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
