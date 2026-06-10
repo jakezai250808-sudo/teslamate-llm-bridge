@@ -49,28 +49,6 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
-        <!-- SVG -> PNG rendering (card endpoint).
-             batik-codec provides PNG ImageWriter registration needed by PNGTranscoder.
-             Exclude xml-apis (conflicts with JDK DOM impl) but KEEP xml-apis-ext:
-             it provides org.w3c.dom.svg.SVGDocument which Batik PNGTranscoder needs
-             at runtime (NoClassDefFoundError otherwise on JDK 21). -->
-        <dependency>
-            <groupId>org.apache.xmlgraphics</groupId>
-            <artifactId>batik-transcoder</artifactId>
-            <version>1.18</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>xml-apis</groupId>
-                    <artifactId>xml-apis</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.xmlgraphics</groupId>
-            <artifactId>batik-codec</artifactId>
-            <version>1.18</version>
-        </dependency>
-
         <!-- Actuator: /actuator/health endpoint referenced in README quick-start -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -212,5 +212,3 @@ output:
     - { name: charge_label,      from: charge_label,       type: object }
     - { name: summary,           from: summary,            type: string }
 
-card:
-  template: card.svg.tmpl

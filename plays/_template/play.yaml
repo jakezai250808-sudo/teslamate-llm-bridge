@@ -2,9 +2,9 @@
 # teslamate-llm-bridge Play Engine — 玩法模板（注释版）
 #
 # 一个玩法 = plays/<name>/ 目录：
-#   play.yaml      —— 本 manifest（必填，schema 见 ../play.schema.json）
-#   card.svg.tmpl  —— 分享卡 SVG 模板（声明 card: 时必填，1080×1080）
-#   fixtures.yaml  —— CI fixture：mock SQL 行 + 期望 compute 输出（强烈建议）
+#   play.yaml          —— 本 manifest（必填，schema 见 ../play.schema.json）
+#   creative-prompt.md —— 生图描述模板（可选；供接口二各渠道使用）
+#   fixtures.yaml      —— CI fixture：mock SQL 行 + 期望 compute 输出（强烈建议）
 #
 # 目录名必须与下方 name 一致；下划线开头目录（如本 _template）不会被引擎加载。
 # 引擎行为：启动扫描 → schema 校验 → SQL 门禁 → 表达式编译 → 模板 lint，
@@ -115,15 +115,7 @@ output:
     - { name: persona, from: persona, type: object }
     - { name: summary, from: summary, type: string }
 
-# 可选：分享卡。template 锁死文件名 card.svg.tmpl（杜绝路径逃逸）。
-# 模板内可用占位符：compute var / output 字段名 / 内置变量
-#   ${car_name} ${car_model} ${window_label} ${generated_at} ${window_days}
-#   （car_name/car_model/window_label/generated_at 仅 card 模板可用 ——
-#    compute 的 template 步骤引用会在加载期被拒）
-# 点路径可取 lookup object 的字段：${persona.name}
-# lint 拒绝：<script <foreignObject <!ENTITY <!DOCTYPE；任何 href/src 属性与
-#   url(...) 引用只允许文档内 '#id'；SVG 文本禁 emoji 等非 BMP 码位（渲染环境
-#   只有 Noto Sans CJK，无 emoji 字体，必然渲染成方框 —— emoji 放上面 emoji: 字段）
-# 排版约定：${car_name} 引擎保证 ≤ 12 个 code point（超长截断加 …），按此宽度排版
-card:
-  template: card.svg.tmpl
+# 可选：生图描述模板。在玩法目录下新建 creative-prompt.md，内含 v1（通用）
+# 和 v2（Seedream 调优）两段。{placeholder} 使用 output.fields 中的字段名。
+# 接口二（get_creative_prompt + generate_play_image）使用本文件；
+# SVG card.svg.tmpl 不在开源版中。

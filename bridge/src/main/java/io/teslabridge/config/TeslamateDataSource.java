@@ -1,6 +1,5 @@
 package io.teslabridge.config;
 
-import io.teslamate.play.PlayCardRenderer;
 import io.teslamate.play.PlayEngine;
 import io.teslamate.play.PlayRegistry;
 import javax.sql.DataSource;
@@ -17,9 +16,9 @@ import org.springframework.transaction.PlatformTransactionManager;
  *
  * <p>play-engine-core classes are NOT registered via ComponentScan — the core is designed to be
  * injection-framework-agnostic ({@code PlayEngine} has no {@code @Component}; {@code PlayRegistry}
- * and {@code PlayCardRenderer} have it but rely on Spring-managed construction). Bridge controls
- * all wiring explicitly here, which avoids Spring Boot 3 auto-wiring limitations with
- * {@code @Value}-only constructors scanned from outside the boot package.
+ * has it but relies on Spring-managed construction). Bridge controls all wiring explicitly here,
+ * which avoids Spring Boot 3 auto-wiring limitations with {@code @Value}-only constructors scanned
+ * from outside the boot package.
  *
  * <p>DataSource qualifier names ({@code teslamateJdbc} / {@code teslamateTx}) are kept for
  * symmetry with the SaaS multi-datasource setup; in bridge there is only one DataSource.
@@ -59,15 +58,5 @@ public class TeslamateDataSource {
     @Bean
     public PlayRegistry playRegistry(@Value("${PLAYS_DIR:}") String playsDir) {
         return new PlayRegistry(playsDir);
-    }
-
-    /**
-     * PlayCardRenderer: has @Component in core but similarly requires cross-package @Value
-     * injection of play.card-watermark. Registered explicitly.
-     */
-    @Bean
-    public PlayCardRenderer playCardRenderer(
-            @Value("${play.card-watermark:}") String watermark) {
-        return new PlayCardRenderer(watermark);
     }
 }

@@ -108,12 +108,7 @@ public class PlayRegistry {
       }
       try {
         byte[] yamlBytes = readAll(r);
-        byte[] cardBytes = null;
-        Resource card = r.createRelative("card.svg.tmpl");
-        if (card.exists()) {
-          cardBytes = readAll(card);
-        }
-        PlayDefinition def = PlayLoader.load(dirName, yamlBytes, cardBytes, scopeExtractor);
+        PlayDefinition def = PlayLoader.load(dirName, yamlBytes, scopeExtractor);
         out.put(def.name(), def);
         log.info("play '{}' loaded from classpath", def.name());
       } catch (PlayLoadException | IOException e) {
@@ -171,9 +166,7 @@ public class PlayRegistry {
     if (!Files.isRegularFile(yaml)) return;
     try {
       byte[] yamlBytes = Files.readAllBytes(yaml);
-      Path card = playDir.resolve("card.svg.tmpl");
-      byte[] cardBytes = Files.isRegularFile(card) ? Files.readAllBytes(card) : null;
-      PlayDefinition def = PlayLoader.load(dirName, yamlBytes, cardBytes, scopeExtractor);
+      PlayDefinition def = PlayLoader.load(dirName, yamlBytes, scopeExtractor);
       if (out.containsKey(def.name())) {
         log.warn("play '{}' 被 PLAYS_DIR 覆盖 classpath 版本（热修通道）", def.name());
       }

@@ -2,7 +2,6 @@ package io.teslabridge.play;
 
 import io.teslamate.play.CarWhitelistProvider;
 import io.teslamate.play.PlayAuditLogger;
-import io.teslamate.play.PlayCardRenderer;
 import io.teslamate.play.PlayComputeException;
 import io.teslamate.play.PlayDefinition;
 import io.teslamate.play.PlayDefinition.OutputField;
@@ -12,7 +11,6 @@ import io.teslamate.play.PlayScopeChecker;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,24 +28,23 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
-import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 玩法引擎 3 端点（设计定稿 §2.5，五件套照 {@code TeslamateDrivingScoreController}）：
+ * 玩法引擎 2 端点（开源版，SVG 卡片渲染仅活在 SaaS 私有层）：
  *
  * <pre>
- * GET /api/v1/plays                                  → listPlays（纯元数据）
- * GET /api/v1/cars/{carId}/play/{playName}           → runPlay（JSON envelope）
- * GET /api/v1/cars/{carId}/play/{playName}/card.png  → renderPlayCard（PNG）
+ * GET /api/v1/plays                              → listPlays（纯元数据）
+ * GET /api/v1/cars/{carId}/play/{playName}       → runPlay（JSON envelope）
  * </pre>
+ *
+ * <p>生图通过 接口二（AGENTS.md）路径完成：Agent 拿到 JSON 后，自行调用生图模型或
+ * 通过 {@code generate_play_image} MCP tool 调 Seedream API 生成分享图。
  *
  * <p>每个请求顺序：audit log → carId 不在白名单 → 404 → playName 先过正则再查 registry，
  * 未注册 → 404 → parseLdt 时间窗（缺省 {@code params.default_days}，无则 30）
@@ -74,21 +71,11 @@ public class PlayController {
     /** 窗口硬上限：schema params.default_days 上限同值（365），防 PG 拖死。 */
     static final long MAX_WINDOW_DAYS = 365;
 
-    /** If-None-Match 长度上限（防 CPU amplification，照 heatmap F5）。 */
-    static final int IF_NONE_MATCH_MAX_LEN = 128;
-
-    /** card.png 缓存（photo 类比 score-card 短：play 内容可热修，5 分钟）。 */
-    static final Duration CACHE_MAX_AGE = Duration.ofMinutes(5);
-
-    /** 卡片 generated_at 内置变量的时区（与 :tz 一致）。 */
-    private static final ZoneId CARD_TZ = ZoneId.of("Asia/Shanghai");
-
     /** 404 占位体（与 SaaS 侧跨租户同语，不泄露资源存在性）。 */
     private static final Map<String, Object> NO_INFO = Map.of("data", Map.of());
 
     private final PlayRegistry registry;
     private final PlayEngine engine;
-    private final PlayCardRenderer renderer;
     private final CarWhitelistProvider carWhitelistProvider;
     private final PlayAuditLogger auditLogger;
     private final PlayScopeChecker scopeChecker;
@@ -96,13 +83,11 @@ public class PlayController {
     public PlayController(
             PlayRegistry registry,
             PlayEngine engine,
-            PlayCardRenderer renderer,
             CarWhitelistProvider carWhitelistProvider,
             PlayAuditLogger auditLogger,
             PlayScopeChecker scopeChecker) {
         this.registry = registry;
         this.engine = engine;
-        this.renderer = renderer;
         this.carWhitelistProvider = carWhitelistProvider;
         this.auditLogger = auditLogger;
         this.scopeChecker = scopeChecker;
@@ -122,7 +107,6 @@ public class PlayController {
             item.put("description", p.description());
             item.put("scope", p.scope());
             item.put("default_days", p.defaultDays());
-            item.put("has_card", p.hasCard());
             plays.add(item);
         }
         return ResponseEntity.ok(Map.of("data", Map.of("plays", plays)));
@@ -199,127 +183,6 @@ public class PlayController {
         return ResponseEntity.ok(Map.of("data", data));
     }
 
-    // ====== 3) GET /api/v1/cars/{carId}/play/{playName}/card.png ======
-
-    @GetMapping("/api/v1/cars/{carId:\\d+}/play/{playName}/card.png")
-    public ResponseEntity<byte[]> renderPlayCard(
-            @PathVariable("carId") Long carId,
-            @PathVariable("playName") String playName,
-            @RequestParam(value = "start_date", required = false) String startDate,
-            @RequestParam(value = "end_date", required = false) String endDate,
-            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        auditLogger.log(
-                "/api/v1/cars/" + carId + "/play/" + safeAuditName(playName) + "/card.png");
-        if (carWhitelistProvider.outOfWhitelist(carId)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-        Optional<PlayDefinition> found = lookupPlay(playName);
-        if (found.isEmpty() || !found.get().hasCard()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-        PlayDefinition play = found.get();
-
-        if (scopeChecker.insufficientScope(play)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
-        Window w = resolveWindow(play, startDate, endDate);
-
-        // If-None-Match 长度 guard（防 CPU amplification）。
-        // ETag 比对移到查库之后：需纳入真实数据修订因子，在此仅做长度截断，
-        // 以防超大值被带入后续 matchesAnyEtag 的字符串分割。
-        String safeIfNoneMatch =
-                (ifNoneMatch != null && ifNoneMatch.length() > IF_NONE_MATCH_MAX_LEN)
-                        ? null
-                        : ifNoneMatch;
-
-        byte[] png;
-        try {
-            PlayEngine.RunResult result = engine.run(play, carId, w.start, w.end);
-            // ETag 在查库后基于渲染输入计算：
-            //   - Scored：vars map（SQL 聚合结果 + compute 中间变量）稳定序列化 hash，
-            //     数据更新后 vars 变化 → ETag 自然 bust，客户端不会拿旧卡。
-            //   - Unscored：用 sample + minSample 作为数据修订因子（数据不足情况）。
-            // 两种情况的 ETag 都包含 play 内容哈希（play 定义更新自动 bust）。
-            // ETag 修复：Scored 卡片的 dataRevision 须纳入 carLabel + 日期桶。
-            // carLabel 在 Scored 分支预拉取一次，后续渲染直接复用，避免双次 DB 查询。
-            PlayEngine.CarLabel carLabelForEtag =
-                    (result instanceof PlayEngine.Scored) ? engine.carLabel(carId) : null;
-            String dataRevision;
-            if (result instanceof PlayEngine.Scored scored) {
-                // ETag 修复：dataRevision 除 vars 外还须纳入：
-                //   1. carLabel 三字段（车名改变 → 卡面变 → ETag 必须 bust）
-                //   2. generated_at 的「日期桶」（addBuiltinCardVars 写入的是 LocalDate 字符串，
-                //      即 yyyy-MM-dd 精度；ETag 用相同粒度，同天多次请求可 304，跨天自动 bust）。
-                String dateBucket = LocalDate.now(CARD_TZ).toString();
-                dataRevision = stableHash(scored.vars())
-                        + ":" + carLabelForEtag.name()
-                        + ":" + carLabelForEtag.model()
-                        + ":" + carLabelForEtag.trimBadging()
-                        + ":" + dateBucket;
-            } else {
-                PlayEngine.Unscored u = (PlayEngine.Unscored) result;
-                dataRevision = u.sample() + ":" + u.minSample();
-            }
-            String etag = computeEtag(play, carId, w.start, w.end, dataRevision);
-            if (safeIfNoneMatch != null && matchesAnyEtag(safeIfNoneMatch, etag)) {
-                return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
-                        .eTag(etag)
-                        .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
-                        .build();
-            }
-            if (result instanceof PlayEngine.Unscored u) {
-                // 数据不足不报错：灰色「数据不足」兜底卡 HTTP 200，LLM 平台流程不中断。
-                png = renderer.renderInsufficient(play, u.sample(), u.minSample());
-                return ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_PNG)
-                        .eTag(etag)
-                        .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
-                        .body(png);
-            } else {
-                PlayEngine.Scored scored = (PlayEngine.Scored) result;
-                Map<String, Object> vars = new LinkedHashMap<>(scored.vars());
-                addOutputAliases(play, vars);
-                // 复用 carLabelForEtag 避免二次查 DB
-                addBuiltinCardVarsWithLabel(vars, carLabelForEtag, scored.windowDays());
-                png = renderer.render(play, vars);
-                return ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_PNG)
-                        .eTag(etag)
-                        .cacheControl(CacheControl.maxAge(CACHE_MAX_AGE).cachePrivate())
-                        .body(png);
-            }
-        } catch (PlayComputeException | PlayCardRenderer.PlayRenderException e) {
-            log.error("play '{}' card render failed carId={}: {}", play.name(), carId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                    .body(
-                            "{\"type\":\"render_failure\",\"title\":\"play card render failed\"}"
-                                    .getBytes(StandardCharsets.UTF_8));
-        } catch (DataAccessException e) {
-            // SQL 层错误：聊天流里返「暂时无法生成」灰卡（200 + no-store，不缓存错误卡、
-            // 不带 ETag），比裸 500 破图标体面；render 自身也挂才降级 500 problem+json。
-            log.error("play '{}' card sql failed carId={}: {}", play.name(), carId, e.getMessage());
-            try {
-                return ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_PNG)
-                        .cacheControl(CacheControl.noStore())
-                        .body(renderer.renderUnavailable(play));
-            } catch (RuntimeException re) {
-                log.error(
-                        "play '{}' unavailable-card render failed carId={}: {}",
-                        play.name(),
-                        carId,
-                        re.getMessage());
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                        .body(
-                                "{\"type\":\"play_sql_error\",\"title\":\"play data query failed\"}"
-                                        .getBytes(StandardCharsets.UTF_8));
-            }
-        }
-    }
-
     // ====== helpers ======
 
     private Optional<PlayDefinition> lookupPlay(String playName) {
@@ -332,58 +195,6 @@ public class PlayController {
     /** audit target 不写入未经验证的 playName 原文（防日志注入），非法名记 "_invalid"。 */
     private static String safeAuditName(String playName) {
         return playName != null && PLAY_NAME_RE.matcher(playName).matches() ? playName : "_invalid";
-    }
-
-    /**
-     * 卡片 car_name 注入前的最大保证长度（code point 计，CJK 全角按 1 字计）。车名来自
-     * 用户在 Tesla App 的自定义输入，长度不受控；SVG &lt;text&gt; 无自动换行 / 省略，
-     * 不截断必然溢出画布或压到水印。模板按「最长 12 字 + …」排版（_template 注释 +
-     * bridge spec §7 同步写明）。
-     */
-    static final int CAR_NAME_MAX_CODEPOINTS = 12;
-
-    /**
-     * 把 output 字段 alias 注入渲染 ctx（spec §5：output 字段可用于 card 模板）。
-     *
-     * <p>compute ctx（{@code scored.vars()}）的 key 是 SQL 列名 / compute 变量名 ——
-     * <b>不含 output.name alias</b>。loader 的模板 lint（{@code PlayLoader.lintTemplate}）
-     * 把 {@code output.name} 也算作合法占位符放行，于是当 {@code output.name != output.from}
-     * （例 output 字段 {@code total_km} from {@code total_km_r}）时，play 能加载，但卡片
-     * 模板里的 {@code ${total_km}} 在渲染期解析不到 → 每次 card 请求 500。
-     *
-     * <p>这里对每个 output 字段做 {@code vars[output.name] = vars[output.from]}（仅当
-     * source 存在且 alias 尚未被占用，{@code putIfAbsent} 不覆盖同名 compute 变量），
-     * 让模板用 {@code output.name} 或源变量名都能渲染。{@code from} 不在 ctx 的非法定义在
-     * runPlay 的 outputValue 已会显式 500，这里安全跳过即可。
-     */
-    private static void addOutputAliases(PlayDefinition play, Map<String, Object> vars) {
-        for (OutputField f : play.outputFields()) {
-            if (!f.name().equals(f.from()) && vars.containsKey(f.from())) {
-                vars.putIfAbsent(f.name(), vars.get(f.from()));
-            }
-        }
-    }
-
-    /**
-     * 卡片内置变量（设计定稿 §2.3）：car_name / car_model / window_label / generated_at /
-     * watermark。
-     *
-     * <p>{@code watermark} 来自 {@code play.card-watermark} 配置，默认空字符串（模板可选渲染）。
-     */
-    private void addBuiltinCardVarsWithLabel(
-            Map<String, Object> vars, PlayEngine.CarLabel car, long windowDays) {
-        vars.putIfAbsent("car_name", truncateDisplay(car.displayName(), CAR_NAME_MAX_CODEPOINTS));
-        vars.putIfAbsent("car_model", car.displayModel());
-        vars.putIfAbsent("window_label", "近 " + windowDays + " 天");
-        vars.putIfAbsent("generated_at", LocalDate.now(CARD_TZ).toString());
-        vars.putIfAbsent("watermark", renderer.watermark());
-    }
-
-    /** 按 code point 截断（防 surrogate pair 截半）超长部分换 '…'。 */
-    static String truncateDisplay(String s, int maxCodePoints) {
-        if (s == null) return "";
-        if (s.codePointCount(0, s.length()) <= maxCodePoints) return s;
-        return s.substring(0, s.offsetByCodePoints(0, maxCodePoints)) + "…";
     }
 
     private Object outputValue(PlayDefinition play, OutputField f, Map<String, Object> vars) {
@@ -461,45 +272,12 @@ public class PlayController {
         return i.atOffset(ZoneOffset.UTC).toLocalDateTime();
     }
 
-    // ====== ETag ======
+    // ====== ETag（runPlay JSON 端点无 ETag；保留 stableHash 供测试引用）======
 
     /**
-     * ETag = SHA-256(playName + carId + start + end + play 内容哈希 + dataRevision)。
-     *
-     * <p>{@code dataRevision} 是数据修订因子：Scored 时为 vars map 的稳定 hash（SQL 聚合结果
-     * 变化即 bust），Unscored 时为 "sample:minSample"。这样数据更新后客户端不会拿旧卡。
-     */
-    static String computeEtag(
-            PlayDefinition play, long carId, LocalDateTime start, LocalDateTime end, String dataRevision) {
-        String input =
-                "play-card:"
-                        + play.name()
-                        + ":"
-                        + carId
-                        + ":"
-                        + start
-                        + ":"
-                        + end
-                        + ":"
-                        + play.contentSha256()
-                        + ":"
-                        + dataRevision;
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
-    }
-
-    /**
-     * vars map 稳定序列化 hash（用于 ETag 数据修订因子）。
+     * vars map 稳定序列化 hash（供测试验证用）。
      *
      * <p>按 key 排序后拼 "key=value" 字符串，再取 SHA-256 前 16 字节（32 hex）。
-     * 只需「变化可辨识」，不需密码学强度，16 字节已足够。
      */
     static String stableHash(Map<String, Object> vars) {
         StringBuilder sb = new StringBuilder();
@@ -517,22 +295,6 @@ public class PlayController {
         }
     }
 
-    /** If-None-Match 支持逗号列表 + 通配 '*' + W/ 弱前缀（照 heatmap F10）。 */
-    static boolean matchesAnyEtag(String ifNoneMatch, String etag) {
-        String bare = stripQuotesAndWeak(etag);
-        for (String part : ifNoneMatch.split(",")) {
-            String candidate = stripQuotesAndWeak(part.trim());
-            if ("*".equals(candidate) || candidate.equals(bare)) return true;
-        }
-        return false;
-    }
-
-    private static String stripQuotesAndWeak(String s) {
-        String v = s;
-        if (v.startsWith("W/")) v = v.substring(2);
-        if (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
-            v = v.substring(1, v.length() - 1);
-        }
-        return v;
-    }
+    // unused — kept for ZoneId reference in tests
+    private static final ZoneId CARD_TZ = ZoneId.of("Asia/Shanghai");
 }

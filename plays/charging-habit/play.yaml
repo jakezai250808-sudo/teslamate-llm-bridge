@@ -193,5 +193,3 @@ output:
     - { name: total_kwh, from: total_kwh_r, type: number }
     - { name: avg_charge_min, from: avg_charge_min_r, type: number }
 
-card:
-  template: card.svg.tmpl

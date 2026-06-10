@@ -124,5 +124,3 @@ output:
     - { name: persona, from: persona, type: object }
     - { name: night_tag, from: night_tag, type: string }
     - { name: summary, from: summary, type: string }
-card:
-  template: card.svg.tmpl

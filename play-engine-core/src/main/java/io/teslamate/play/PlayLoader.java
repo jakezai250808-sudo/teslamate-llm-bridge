@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -45,42 +44,19 @@ public final class PlayLoader {
 
   static final Pattern NAME_RE = Pattern.compile("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$");
   private static final Pattern VAR_RE = Pattern.compile("^[a-z_][a-z0-9_]*$");
-  /** 模板占位符：{@code ${ident}} 或点路径 {@code ${persona.name}}。 */
-  private static final Pattern PLACEHOLDER_RE = Pattern.compile("\\$\\{([^}]*)}");
-
-  private static final Pattern DOTTED_PATH_RE =
-      Pattern.compile("^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$");
-
-  /**
-   * 模板内置变量（{@link PlayCardRenderer} 注入）。
-   *
-   * <p>{@code watermark}：由 {@link PlayCardRenderer} 通过 {@code @Value("${play.card-watermark:}")}
-   * 注入，bridge 默认空字符串，SaaS 配置 {@code tesla.shenqinqin.com}。
-   */
-  static final Set<String> BUILTIN_TEMPLATE_VARS =
-      Set.of("car_name", "car_model", "window_label", "generated_at", "window_days", "watermark");
-
-  /**
-   * 仅 card.png 路径注入的内置变量（{@code PlayController.addBuiltinCardVars}）。compute
-   * 流水线 ctx 里没有它们 —— compute template 步骤引用会在每次请求时 500
-   * PLAY_COMPUTE_ERROR，必须在加载期拒掉。
-   */
-  static final Set<String> CARD_ONLY_BUILTINS =
-      Set.of("car_name", "car_model", "window_label", "generated_at", "watermark");
 
   /** compute template 步骤的占位符（与 {@link PlayComputeEngine} 同源：纯 ident 无点路径）。 */
   private static final Pattern COMPUTE_PLACEHOLDER_RE =
       Pattern.compile("\\$\\{([a-z_][a-z0-9_]*)}");
 
-  /** SVG 模板 lint 拒绝的内容（小写匹配）：脚本 / 外部引用 / DTD 注入面。 */
-  private static final List<String> TEMPLATE_FORBIDDEN =
-      List.of("<script", "<foreignobject", "xlink:href", "href=\"http", "<!entity", "<!doctype");
-
   /**
-   * CSS/SVG {@code url(...)} 引用提取（容空白 + 引号）：只允许文档内 {@code #id}。
+   * card-only 内置变量（compute template 步骤不可引用）。
+   *
+   * <p>这些变量仅在 SaaS 私有层 card 渲染路径注入，compute 流水线 ctx 不含它们。
+   * compute template 步骤引用会在每次请求时 500 PLAY_COMPUTE_ERROR，必须在加载期拒掉。
    */
-  private static final Pattern URL_REF_RE =
-      Pattern.compile("url\\s*\\(\\s*[\"']?\\s*([^)\"']*)", Pattern.CASE_INSENSITIVE);
+  static final Set<String> CARD_ONLY_BUILTINS =
+      Set.of("car_name", "car_model", "window_label", "generated_at", "watermark");
 
   private static final Set<String> ROOT_KEYS =
       Set.of(
@@ -95,22 +71,19 @@ public final class PlayLoader {
           "min_sample",
           "compute",
           "tables",
-          "output",
-          "card");
+          "output");
 
   private PlayLoader() {}
 
   /**
    * @param dirName play 目录名（必须与 manifest name 一致）
    * @param playYamlBytes play.yaml 原始字节（参与内容 SHA-256）
-   * @param cardTemplateBytes card.svg.tmpl 原始字节；目录里没有该文件传 null
    * @param scopeExtractor SQL → 所需 scope 集合的提取函数。SaaS 传
    *     {@code PlaySqlScopeExtractor::extract}；bridge 传 {@code sql -> Set.of()}。
    */
   public static PlayDefinition load(
       String dirName,
       byte[] playYamlBytes,
-      byte[] cardTemplateBytes,
       Function<String, Set<String>> scopeExtractor) {
     Map<String, Object> root = parseYaml(playYamlBytes);
 
@@ -184,26 +157,7 @@ public final class PlayLoader {
     // output
     List<OutputField> outputFields = parseOutput(require(root, "output"));
 
-    // card（可选；template 锁死文件名杜绝路径逃逸）
-    String cardTemplate = null;
-    Object card = root.get("card");
-    if (card != null) {
-      Map<String, Object> c = asMap(card, "card");
-      for (String k : c.keySet()) {
-        if (!"template".equals(k)) throw new PlayLoadException("card 未知字段 '" + k + "'");
-      }
-      Object tmpl = require(c, "card.template");
-      if (!"card.svg.tmpl".equals(tmpl)) {
-        throw new PlayLoadException("card.template 必须为 'card.svg.tmpl'");
-      }
-      if (cardTemplateBytes == null) {
-        throw new PlayLoadException("manifest 声明 card 但目录里没有 card.svg.tmpl");
-      }
-      cardTemplate = new String(cardTemplateBytes, StandardCharsets.UTF_8);
-      lintTemplate(cardTemplate, compute, outputFields);
-    }
-
-    String sha = contentSha256(playYamlBytes, cardTemplateBytes);
+    String sha = contentSha256(playYamlBytes);
 
     // 通过注入的 scopeExtractor 派生所需 scope（在 PlaySqlGuard.check 通过之后）
     Set<String> requiredScopes = scopeExtractor.apply(sql);
@@ -221,7 +175,6 @@ public final class PlayLoader {
         List.copyOf(compute),
         tables,
         List.copyOf(outputFields),
-        cardTemplate,
         sha,
         requiredScopes);
   }
@@ -229,9 +182,8 @@ public final class PlayLoader {
   /**
    * 便捷重载：无 scope 提取（bridge 侧，{@code requiredScopes} 永远为空集）。
    */
-  public static PlayDefinition load(
-      String dirName, byte[] playYamlBytes, byte[] cardTemplateBytes) {
-    return load(dirName, playYamlBytes, cardTemplateBytes, sql -> Set.of());
+  public static PlayDefinition load(String dirName, byte[] playYamlBytes) {
+    return load(dirName, playYamlBytes, sql -> Set.of());
   }
 
   // ====== YAML ======
@@ -444,121 +396,17 @@ public final class PlayLoader {
                 + var
                 + "') 引用 '${"
                 + ident
-                + "}' —— 该内置变量仅 card 模板可用（compute 流水线 ctx 无此变量）");
-      }
-    }
-  }
-
-  private static void lintTemplate(
-      String template, List<ComputeStep> compute, List<OutputField> outputFields) {
-    String lower = template.toLowerCase(Locale.ROOT);
-    for (String forbidden : TEMPLATE_FORBIDDEN) {
-      if (lower.contains(forbidden)) {
-        throw new PlayLoadException("card.svg.tmpl 含禁用内容 '" + forbidden + "'");
-      }
-    }
-    template
-        .codePoints()
-        .filter(cp -> cp > 0xFFFF)
-        .findFirst()
-        .ifPresent(
-            cp -> {
-              throw new PlayLoadException(
-                  "card.svg.tmpl 含非 BMP 码位 '"
-                      + new String(Character.toChars(cp))
-                      + "'（U+"
-                      + Integer.toHexString(cp).toUpperCase(Locale.ROOT)
-                      + "）—— 渲染环境无 emoji 字体，会渲染成方框；"
-                      + "emoji 请放 manifest 的 emoji: 字段");
-            });
-    validateTemplateDom(template);
-    Matcher u = URL_REF_RE.matcher(template);
-    while (u.find()) {
-      String ref = u.group(1).strip();
-      if (!ref.startsWith("#")) {
-        throw new PlayLoadException(
-            "card.svg.tmpl url(...) 引用 '" + ref + "' 非文档内 '#id'，拒外部资源");
-      }
-    }
-    Set<String> known = new HashSet<>(BUILTIN_TEMPLATE_VARS);
-    for (ComputeStep s : compute) known.add(s.var());
-    for (OutputField f : outputFields) known.add(f.name());
-    Matcher m = PLACEHOLDER_RE.matcher(template);
-    while (m.find()) {
-      String path = m.group(1);
-      if (!DOTTED_PATH_RE.matcher(path).matches()) {
-        throw new PlayLoadException("card.svg.tmpl 占位符 '${" + path + "}' 非法");
-      }
-      String rootSeg = path.contains(".") ? path.substring(0, path.indexOf('.')) : path;
-      if (!known.contains(rootSeg)) {
-        throw new PlayLoadException(
-            "card.svg.tmpl 占位符 '${"
-                + path
-                + "}' 解析不到 compute var / output 字段 / 内置变量");
-      }
-    }
-  }
-
-  private static void validateTemplateDom(String template) {
-    org.w3c.dom.Document doc;
-    try {
-      javax.xml.parsers.DocumentBuilderFactory dbf =
-          javax.xml.parsers.DocumentBuilderFactory.newInstance();
-      dbf.setNamespaceAware(true);
-      dbf.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
-      dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-      dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-      dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-      dbf.setXIncludeAware(false);
-      dbf.setExpandEntityReferences(false);
-      doc =
-          dbf.newDocumentBuilder()
-              .parse(
-                  new java.io.ByteArrayInputStream(
-                      template.getBytes(StandardCharsets.UTF_8)));
-    } catch (PlayLoadException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new PlayLoadException("card.svg.tmpl 不是 well-formed XML: " + e.getMessage(), e);
-    }
-    checkElementRefs(doc.getDocumentElement());
-  }
-
-  private static void checkElementRefs(org.w3c.dom.Element el) {
-    org.w3c.dom.NamedNodeMap attrs = el.getAttributes();
-    for (int i = 0; i < attrs.getLength(); i++) {
-      org.w3c.dom.Node a = attrs.item(i);
-      String local = a.getLocalName() != null ? a.getLocalName() : a.getNodeName();
-      String lname = local.toLowerCase(Locale.ROOT);
-      if ("href".equals(lname) || "src".equals(lname)) {
-        String v = a.getNodeValue() == null ? "" : a.getNodeValue().strip();
-        if (!v.startsWith("#")) {
-          throw new PlayLoadException(
-              "card.svg.tmpl <"
-                  + el.getTagName()
-                  + "> 的 "
-                  + a.getNodeName()
-                  + "='"
-                  + v
-                  + "' 非文档内 '#id' 引用，拒外部资源（含 file:/ftp:/http 等一切 scheme）");
-        }
-      }
-    }
-    org.w3c.dom.NodeList children = el.getChildNodes();
-    for (int i = 0; i < children.getLength(); i++) {
-      if (children.item(i) instanceof org.w3c.dom.Element child) {
-        checkElementRefs(child);
+                + "}' —— 该内置变量仅 SaaS 私有层 card 路径可用（compute 流水线 ctx 无此变量）");
       }
     }
   }
 
   // ====== helpers ======
 
-  private static String contentSha256(byte[] yamlBytes, byte[] cardBytes) {
+  private static String contentSha256(byte[] yamlBytes) {
     try {
       MessageDigest md = MessageDigest.getInstance("SHA-256");
       md.update(yamlBytes);
-      if (cardBytes != null) md.update(cardBytes);
       StringBuilder sb = new StringBuilder();
       for (byte b : md.digest()) sb.append(String.format("%02x", b));
       return sb.toString();

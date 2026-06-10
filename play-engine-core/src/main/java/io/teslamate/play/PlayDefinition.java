@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 一个已加载并通过全部校验的玩法（play）—— manifest 字段 + 已编译表达式 + SVG 模板文本 +
+ * 一个已加载并通过全部校验的玩法（play）—— manifest 字段 + 已编译表达式 +
  * 内容 SHA-256（进 ETag，play 更新自动 bust 缓存）。
  *
  * <p>由 {@link PlayLoader} 构造；{@link PlayRegistry} 启动后持有不可变 Map（v1 无热加载，
@@ -24,8 +24,7 @@ import java.util.Set;
  * @param compute 顺序流水线步骤
  * @param tables lookup 步骤的查表数据：table → key → field → string
  * @param outputFields JSON envelope 暴露的字段
- * @param cardTemplate card.svg.tmpl 文本；play 无卡片时为 null
- * @param contentSha256 play.yaml + card.svg.tmpl 字节的 SHA-256 hex
+ * @param contentSha256 play.yaml 字节的 SHA-256 hex
  * @param requiredScopes 所需 scope 集合。SaaS loader 通过 {@link PlayLoader} 的
  *     {@code requiredScopesExtractor} 扩展点填充（从 SQL 自动派生）；bridge 侧 loader
  *     传 {@code Set.of()} 空集（bridge 无 OAuth scope 概念，{@link PlayScopeChecker}
@@ -44,13 +43,8 @@ public record PlayDefinition(
     List<ComputeStep> compute,
     Map<String, Map<String, Map<String, String>>> tables,
     List<OutputField> outputFields,
-    String cardTemplate,
     String contentSha256,
     Set<String> requiredScopes) {
-
-  public boolean hasCard() {
-    return cardTemplate != null;
-  }
 
   /** output.fields 条目：{@code name} 暴露名、{@code from} 来源 var/列、{@code type} 三选一。 */
   public record OutputField(String name, String from, String type) {}

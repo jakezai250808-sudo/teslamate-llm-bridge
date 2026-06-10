@@ -206,5 +206,3 @@ output:
     - { name: b_persona, from: b_persona, type: object }
     - { name: summary, from: summary, type: string }
 
-card:
-  template: card.svg.tmpl

@@ -1,13 +1,11 @@
 """
 teslamate-llm-bridge MCP server
 
-Exposes 6 MCP tools:
+Exposes 4 MCP tools:
   - list_plays           : list all available plays
   - run_play             : run a play for a car, returns JSON result
   - get_creative_prompt  : read a play's creative-prompt.md template (for image generation)
-  - render_play_card     : render a play's share card, returns MCP image content
   - generate_play_image  : call 火山方舟 Seedream 文生图 API, return generated image
-  （tool 3 get_creative_prompt 在 render_play_card 之前注册；编号 4→render, 5→generate）
 
 完整生图流程链（必须按序，跳步会降低质量）：
   1. list_plays           → 发现可用 play 名称
@@ -79,15 +77,6 @@ def _get_json(path: str, params: dict[str, str] | None = None) -> Any:
         return resp.json()
 
 
-def _get_bytes(path: str, params: dict[str, str] | None = None) -> bytes:
-    """GET bridge endpoint and return raw bytes."""
-    url = f"{BRIDGE_URL}{path}"
-    with httpx.Client(timeout=60) as client:
-        resp = client.get(url, headers=_headers(), params=params or {})
-        resp.raise_for_status()
-        return resp.content
-
-
 # ---------------------------------------------------------------------------
 # MCP server
 # ---------------------------------------------------------------------------
@@ -102,7 +91,7 @@ mcp = FastMCP(
         "3) get_creative_prompt to fetch the prompt template; "
         "4) fill placeholders with real data; "
         "5) generate_play_image to produce the social-share poster. "
-        "render_play_card gives a deterministic SVG-based PNG card without external AI."
+        "See AGENTS.md for full image-generation path guide (API / browser-driven / platform-native)."
     ),
 )
 
@@ -123,7 +112,7 @@ def list_plays() -> dict[str, Any]:
     """
     Step 1 of the image-generation flow: discover which play names exist.
 
-    Returns: {data: {plays: [{name, title, emoji, description, scope, default_days, has_card}]}}
+    Returns: {data: {plays: [{name, title, emoji, description, scope, default_days}]}}
 
     Next step: pass the desired play name to run_play to get structured driving data.
     """
@@ -220,44 +209,7 @@ def get_creative_prompt(play_name: str) -> str:
     return prompt_path.read_text(encoding="utf-8")
 
 
-# ── Tool 5: render_play_card ─────────────────────────────────────────────────
-
-
-@mcp.tool(
-    name="render_play_card",
-    description=(
-        "Render a play's share card as a 1080x1080 PNG image and return it as base64. "
-        "Returns 404 if the play has no card template (check has_card from list_plays). "
-        "If the car has insufficient data, a placeholder card is returned instead of an error."
-    ),
-)
-def render_play_card(
-    play_name: str,
-    car_id: int,
-    start_date: str = "",
-    end_date: str = "",
-) -> list[ImageContent]:
-    """
-    Args:
-        play_name:  kebab-case play name, e.g. "driving-personality"
-        car_id:     TeslaMate car ID (integer)
-        start_date: ISO 8601 window start (optional)
-        end_date:   ISO 8601 window end   (optional)
-
-    Returns:
-        MCP image content item: [{type: "image", data: "<base64>", mimeType: "image/png"}]
-    """
-    params: dict[str, str] = {}
-    if start_date:
-        params["start_date"] = start_date
-    if end_date:
-        params["end_date"] = end_date
-    png_bytes = _get_bytes(f"/api/v1/cars/{car_id}/play/{play_name}/card.png", params)
-    b64 = base64.b64encode(png_bytes).decode("ascii")
-    return [ImageContent(type="image", data=b64, mimeType="image/png")]
-
-
-# ── Tool 6: generate_play_image ─────────────────────────────────────────────
+# ── Tool 4: generate_play_image ─────────────────────────────────────────────
 
 
 @mcp.tool(

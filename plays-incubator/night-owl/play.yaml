@@ -112,5 +112,4 @@ output:
     - { name: total_drives, from: total_drives, type: number }
     - { name: night_km,     from: night_km,     type: number }
 
-card:
-  template: card.svg.tmpl
+# creative-prompt.md — 生图模板（可选，待补充）

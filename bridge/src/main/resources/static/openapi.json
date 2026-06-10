@@ -39,8 +39,7 @@
                         "emoji": "🧬",
                         "description": "16-type driving personality — vigor, night-driving, radius, frequency axes produce a 4-letter code (e.g. FNLE) with a Chinese persona name and one-liner.",
                         "scope": "read:drives",
-                        "default_days": 30,
-                        "has_card": true
+                        "default_days": 30
                       }
                     ]
                   }
@@ -150,71 +149,6 @@
           }
         }
       }
-    },
-    "/api/v1/cars/{carId}/play/{playName}/card.png": {
-      "get": {
-        "operationId": "renderPlayCard",
-        "summary": "Render a play's share card (PNG)",
-        "description": "Renders the play's SVG template with computed data and returns a 1080×1080 PNG image. Returns 404 if the play has no card. Supports `If-None-Match` / `ETag` for caching.",
-        "parameters": [
-          {
-            "name": "carId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 1
-            }
-          },
-          {
-            "name": "playName",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "example": "driving-personality"
-            }
-          },
-          {
-            "name": "start_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "end_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "1080×1080 PNG share card",
-            "content": {
-              "image/png": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          },
-          "304": {
-            "description": "Not Modified (ETag matched)"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        }
-      }
     }
   },
   "components": {
@@ -250,8 +184,7 @@
           "emoji": { "type": "string" },
           "description": { "type": "string" },
           "scope": { "type": "string" },
-          "default_days": { "type": "integer" },
-          "has_card": { "type": "boolean" }
+          "default_days": { "type": "integer" }
         }
       },
       "PlayResultResponse": {

@@ -174,5 +174,3 @@ output:
     - { name: wknd_avg_km, from: wknd_avg_km, type: number }
     - { name: wkday_avg_km, from: wkday_avg_km, type: number }
 
-card:
-  template: card.svg.tmpl

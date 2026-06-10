@@ -188,5 +188,3 @@ output:
     - { name: total_kwh_charged,     from: total_kwh_charged,     type: number }
     - { name: summary,               from: summary,               type: string }
 
-card:
-  template: card.svg.tmpl

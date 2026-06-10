@@ -228,5 +228,3 @@ output:
     - { name: freq_pct, from: freq_pct, type: number }
     - { name: drive_count, from: drive_count, type: number }
 
-card:
-  template: card.svg.tmpl

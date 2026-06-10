@@ -123,17 +123,6 @@
           }
         }
       }
-    },
-    "card": {
-      "type": "object",
-      "required": ["template"],
-      "additionalProperties": false,
-      "properties": {
-        "template": {
-          "const": "card.svg.tmpl",
-          "$comment": "锁死文件名，杜绝路径逃逸"
-        }
-      }
     }
   }
 }

@@ -124,5 +124,4 @@ output:
     - { name: persona, from: persona, type: object }
     - { name: night_tag, from: night_tag, type: string }
     - { name: summary, from: summary, type: string }
-card:
-  template: card.svg.tmpl
+# creative-prompt.md — 生图模板（可选，待补充）
