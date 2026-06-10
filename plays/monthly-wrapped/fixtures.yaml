@@ -1,0 +1,83 @@
+# ============================================================================
+# monthly-wrapped fixtures —— CI（PlayRegistryTest.repoPlays_loadAndFixturesAllPass）
+# 用 mock SQL 行验证 compute 流水线：里程档位 / 夜行标签 / 查表 / 摘要全对。
+# ============================================================================
+
+fixtures:
+  # 典型：杭州市区通勤族，5 月 ~743 km → b3 城市通勤特种兵；夜行 10% → 偶尔夜归人
+  - name: typical-commuter-may
+    window_days: 31
+    row:
+      drive_count: 86
+      total_km: 742.6
+      total_min: 1890
+      longest_km: 58.3
+      top_speed: 132
+      night_drives: 9
+      active_days: 27
+      busiest_day: "05-17"
+      busiest_day_km: 96.4
+      fav_hour: 8
+      charge_count: 11
+      energy_added_kwh: 168.4
+    expect:
+      band: b3
+      persona.title: 城市通勤特种兵
+      persona.emoji: "🏙️"
+      night_tag: 偶尔夜归人
+      total_km_r: 743
+      hours_1dp: 31.5
+      avg_km: 9
+      night_pct: 10
+      longest_r: 58
+      top_speed_r: 132
+      kwh_r: 168
+      busiest_km_r: 96
+      fav_hour_i: 8
+      summary: "本月 86 次出行，跑了 743 km · 偶尔夜归人"
+
+  # 极端：国庆长途月 4200+ km 触顶档 b5；夜行 39% 卡在 <40 阈值边界内侧
+  - name: extreme-roadtrip-october
+    window_days: 31
+    row:
+      drive_count: 41
+      total_km: 4203.7
+      total_min: 3480
+      longest_km: 612.8
+      top_speed: 187
+      night_drives: 16
+      active_days: 18
+      busiest_day: "10-02"
+      busiest_day_km: 880.4
+      fav_hour: 9
+      charge_count: 28
+      energy_added_kwh: 712.9
+    expect:
+      band: b5
+      persona.title: 人形迁徙候鸟
+      night_tag: 夜路常客
+      total_km_r: 4204
+      hours_1dp: 58
+      avg_km: 103
+      night_pct: 39
+      longest_r: 613
+      kwh_r: 713
+      busiest_km_r: 880
+      summary: "本月 41 次出行，跑了 4204 km · 夜路常客"
+
+  # 数据不足：drive_count 3 < min_sample 8 → unscored（卡片走灰色兜底）
+  - name: insufficient-sample
+    row:
+      drive_count: 3
+      total_km: 18.2
+      total_min: 45
+      longest_km: 9.1
+      top_speed: 62
+      night_drives: 0
+      active_days: 2
+      busiest_day: "06-03"
+      busiest_day_km: 12.4
+      fav_hour: 14
+      charge_count: 1
+      energy_added_kwh: 11.0
+    expect_unscored: true

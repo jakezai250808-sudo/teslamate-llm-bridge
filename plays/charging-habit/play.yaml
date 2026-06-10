@@ -1,0 +1,197 @@
+# ============================================================================
+# 充电人格八型 —— 三轴（电量焦虑 H/L × 充满癖 F/R × 桩点 G/W）
+#
+# 轴 A  anxiety = 100 - avg_start_soc  高焦虑 H(≥60) / 低焦虑 L(<60)
+#        → 起充 SOC < 40% 触发 H，等到快没电才充
+# 轴 B  full_pct = full_charge_count/charge_count×100  充满 F(≥40%) / 随充随停 R
+# 轴 C  home_pct = home_charge_count/charge_count×100  家/固定桩 G(≥60%) / 外充 W
+#
+# geofence_id IS NOT NULL 作家充代理：TeslaMate 打围栏 = 常驻桩，精度足够娱乐级。
+# min_sample：charge_count ≥ 5（不足则 unscored）。
+# ============================================================================
+
+schema_version: 1
+
+name: charging-habit
+title: 充电人格八型
+emoji: "zap"
+
+description: >-
+  充电人格 8 型测试：用近 30 天充电记录从电量焦虑度（H/L）、充满癖（F/R）、
+  桩点偏好（G/W）三轴算出 3 字母人格码（如 HFG），配中文人格名和自嘲标签，
+  可渲染 1080×1080 分享卡。用户问「我是哪种充电人格 / 我的充电习惯 /
+  测测我怎么充电」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+sql: |-
+  WITH cp AS (
+    SELECT
+      start_battery_level,
+      end_battery_level,
+      duration_min,
+      geofence_id,
+      charge_energy_added,
+      (start_date AT TIME ZONE 'UTC') AT TIME ZONE :tz AS local_start
+    FROM charging_processes
+    WHERE car_id = :car_id
+      AND start_date BETWEEN :start AND :end
+      AND end_date IS NOT NULL
+      AND charge_energy_added > 0
+  )
+  SELECT
+    COUNT(*)                                                              AS charge_count,
+    COALESCE(AVG(start_battery_level), 0)                               AS avg_start_soc,
+    COALESCE(AVG(end_battery_level), 0)                                 AS avg_end_soc,
+    COALESCE(SUM(CASE WHEN end_battery_level >= 95 THEN 1 ELSE 0 END), 0) AS full_charge_count,
+    COALESCE(SUM(CASE WHEN geofence_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS home_charge_count,
+    COALESCE(SUM(CASE WHEN EXTRACT(HOUR FROM local_start) >= 22
+                        OR EXTRACT(HOUR FROM local_start) < 6
+                      THEN 1 ELSE 0 END), 0)                            AS night_charge_count,
+    COALESCE(SUM(CASE WHEN EXTRACT(HOUR FROM local_start) >= 6
+                       AND EXTRACT(HOUR FROM local_start) < 12
+                      THEN 1 ELSE 0 END), 0)                            AS morning_charge_count,
+    COALESCE(AVG(duration_min), 0)                                      AS avg_charge_min,
+    COALESCE(SUM(charge_energy_added), 0)                               AS total_kwh
+  FROM cp
+
+min_sample:
+  field: charge_count
+  min: 5
+
+compute:
+  # ---- 基础取整 ----
+  - var: avg_start_soc_r
+    expr: "ROUND(avg_start_soc)"
+  - var: avg_end_soc_r
+    expr: "ROUND(avg_end_soc)"
+
+  # ---- 各比例 ----
+  - var: full_pct
+    expr: "ROUND(full_charge_count * 100 / GREATEST(charge_count, 1))"
+  - var: home_pct
+    expr: "ROUND(home_charge_count * 100 / GREATEST(charge_count, 1))"
+  - var: night_pct
+    expr: "ROUND(night_charge_count * 100 / GREATEST(charge_count, 1))"
+  - var: morning_pct
+    expr: "ROUND(morning_charge_count * 100 / GREATEST(charge_count, 1))"
+
+  # 电量焦虑指数：起充 SOC 越低 = 越焦虑，范围 0-100
+  - var: anxiety
+    expr: "ROUND(100 - avg_start_soc_r)"
+
+  # ---- 三轴判档 ----
+  # 轴 A：焦虑度 H(anxiety>=60) / L
+  - var: axis_anxiety
+    level:
+      input: anxiety
+      thresholds:
+        - lt: 60
+          label: "L"
+        - label: "H"
+
+  # 轴 B：充满倾向 F(full_pct>=40) / R
+  - var: axis_full
+    level:
+      input: full_pct
+      thresholds:
+        - lt: 40
+          label: "R"
+        - label: "F"
+
+  # 轴 C：桩点偏好 G(home_pct>=60) / W
+  - var: axis_place
+    level:
+      input: home_pct
+      thresholds:
+        - lt: 60
+          label: "W"
+        - label: "G"
+
+  # ---- 人格码 + 查表 ----
+  - var: code
+    template: "${axis_anxiety}${axis_full}${axis_place}"
+  - var: persona
+    lookup:
+      key: code
+      table: personas
+      default:
+        name: "充电玄学大师"
+        desc: "充电逻辑超出已知八型，目前处于研究中。"
+        tag: "#充电行为迷惑研究所"
+
+  # ---- 卡片量条宽度（轨道 400px）----
+  - var: bar_anxiety
+    expr: "anxiety * 400 / 100"
+  - var: bar_full
+    expr: "full_pct * 400 / 100"
+  - var: bar_home
+    expr: "home_pct * 400 / 100"
+  - var: bar_night
+    expr: "LEAST(400, night_pct * 400 / 100)"
+
+  # ---- 其它数值取整 ----
+  - var: total_kwh_r
+    expr: "ROUND(total_kwh)"
+  - var: avg_charge_min_r
+    expr: "ROUND(avg_charge_min)"
+
+  - var: summary
+    template: "近 ${window_days} 天充了 ${charge_count} 次，平均起充 ${avg_start_soc_r}% 电，充满率 ${full_pct}%，家/固桩占比 ${home_pct}%，充电人格 ${code}。"
+
+# 八型人格表：H/L × F/R × G/W = 8 型
+tables:
+  personas:
+    "HFG":
+      name: "续航焦虑症晚期"
+      desc: "一格不到就开始慌，充到 100% 才敢出门，全靠家里那根救命桩。"
+      tag: "#每天睡前确认充上了"
+    "HFW":
+      name: "充电站巡回艺术家"
+      desc: "电量低于 20% 肾上腺素飙升，专挑陌生充电桩，充满再走，全国桩都体验过。"
+      tag: "#找桩比找厕所还急"
+    "HRG":
+      name: "低电无所谓选手"
+      desc: "每次等到快没电，插上家里桩充一半拔掉，够用就行是人生哲学。"
+      tag: "#插上桩就睡着了"
+    "HRW":
+      name: "荒野求生特种兵"
+      desc: "顶着格警告出门，随手找个桩充半小时就跑，充多少算多少。"
+      tag: "#电量低是边际体验"
+    "LFG":
+      name: "电池养生保健派"
+      desc: "从不让电量太低，每晚按时插桩，充到 100% 才踏实，把电当血压管理。"
+      tag: "#SOC 不到 95 不睡觉"
+    "LFW":
+      name: "强迫充满流浪者"
+      desc: "电还多就开始找桩，一定要充满才走，充电站的 VIP 会员就是这么练出来的。"
+      tag: "#充电桩测评博主潜力股"
+    "LRG":
+      name: "佛系能量管理师"
+      desc: "随缘起充，随缘结束，家桩一插睡醒了就走，电池比你更淡定。"
+      tag: "#顺其自然派充电哲学"
+    "LRW":
+      name: "终极随性流派"
+      desc: "高兴就插，差不多就走，不在乎在哪充充多少，开心最重要。"
+      tag: "#充电届的自由主义者"
+
+output:
+  fields:
+    - { name: code, from: code, type: string }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
+    - { name: charge_count, from: charge_count, type: number }
+    - { name: avg_start_soc, from: avg_start_soc_r, type: number }
+    - { name: avg_end_soc, from: avg_end_soc_r, type: number }
+    - { name: full_pct, from: full_pct, type: number }
+    - { name: home_pct, from: home_pct, type: number }
+    - { name: night_pct, from: night_pct, type: number }
+    - { name: anxiety, from: anxiety, type: number }
+    - { name: total_kwh, from: total_kwh_r, type: number }
+    - { name: avg_charge_min, from: avg_charge_min_r, type: number }
+
+card:
+  template: card.svg.tmpl

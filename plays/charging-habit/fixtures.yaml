@@ -1,0 +1,128 @@
+# ============================================================================
+# charging-habit fixtures — CI PlayRegistryTest.repoPlays_loadAndFixturesAllPass
+# 用 mock SQL 行验证 compute 流水线可执行 + 三轴/人格码/查表/摘要全对。
+# ============================================================================
+
+fixtures:
+  # 典型组：续航焦虑症晚期（HFG）
+  # avg_start_soc=18.3 -> avg_start_soc_r=18 -> anxiety=82 >=60 (H)
+  # full_pct=ROUND(10*100/14)=ROUND(71.4)=71 >=40 (F)
+  # home_pct=ROUND(11*100/14)=ROUND(78.6)=79 >=60 (G)
+  - name: anxiety-fullcharge-homecharger
+    window_days: 30
+    row:
+      charge_count: 14
+      avg_start_soc: 18.3
+      avg_end_soc: 96.1
+      full_charge_count: 10
+      home_charge_count: 11
+      night_charge_count: 6
+      morning_charge_count: 2
+      avg_charge_min: 62.4
+      total_kwh: 287.5
+    expect:
+      avg_start_soc_r: 18
+      avg_end_soc_r: 96
+      anxiety: 82
+      full_pct: 71
+      home_pct: 79
+      night_pct: 43
+      morning_pct: 14
+      axis_anxiety: "H"
+      axis_full: "F"
+      axis_place: "G"
+      code: "HFG"
+      persona.name: "续航焦虑症晚期"
+      persona.tag: "#每天睡前确认充上了"
+      bar_anxiety: 328
+      bar_full: 284
+      bar_home: 316
+      total_kwh_r: 288
+      avg_charge_min_r: 62
+      summary: "近 30 天充了 14 次，平均起充 18% 电，充满率 71%，家/固桩占比 79%，充电人格 HFG。"
+
+  # 极端组：终极随性流派（LRW）
+  # avg_start_soc=65.8 -> avg_start_soc_r=66 -> anxiety=34 <60 (L)
+  # full_pct=ROUND(2*100/20)=10 <40 (R)
+  # home_pct=ROUND(4*100/20)=20 <60 (W)
+  # 同时覆盖 GREATEST 防除零（charge_count=20 >> 1）和 LEAST 封顶（bar_night）
+  - name: zen-nomad-charger
+    window_days: 30
+    row:
+      charge_count: 20
+      avg_start_soc: 65.8
+      avg_end_soc: 78.3
+      full_charge_count: 2
+      home_charge_count: 4
+      night_charge_count: 8
+      morning_charge_count: 5
+      avg_charge_min: 28.6
+      total_kwh: 156.2
+    expect:
+      avg_start_soc_r: 66
+      avg_end_soc_r: 78
+      anxiety: 34
+      full_pct: 10
+      home_pct: 20
+      night_pct: 40
+      morning_pct: 25
+      axis_anxiety: "L"
+      axis_full: "R"
+      axis_place: "W"
+      code: "LRW"
+      persona.name: "终极随性流派"
+      persona.tag: "#充电届的自由主义者"
+      bar_anxiety: 136
+      bar_full: 40
+      bar_home: 80
+      bar_night: 160
+      total_kwh_r: 156
+      avg_charge_min_r: 29
+      summary: "近 30 天充了 20 次，平均起充 66% 电，充满率 10%，家/固桩占比 20%，充电人格 LRW。"
+
+  # 边界组：电池养生保健派（LFG），覆盖 L/F/G 各轴低档临界值
+  # avg_start_soc=55.0 -> anxiety=45 <60 (L)
+  # full_pct=ROUND(5*100/10)=50 >=40 (F)
+  # home_pct=ROUND(8*100/10)=80 >=60 (G)
+  - name: battery-health-freak
+    window_days: 30
+    row:
+      charge_count: 10
+      avg_start_soc: 55.0
+      avg_end_soc: 97.8
+      full_charge_count: 5
+      home_charge_count: 8
+      night_charge_count: 7
+      morning_charge_count: 1
+      avg_charge_min: 45.0
+      total_kwh: 198.0
+    expect:
+      avg_start_soc_r: 55
+      avg_end_soc_r: 98
+      anxiety: 45
+      full_pct: 50
+      home_pct: 80
+      night_pct: 70
+      axis_anxiety: "L"
+      axis_full: "F"
+      axis_place: "G"
+      code: "LFG"
+      persona.name: "电池养生保健派"
+      persona.tag: "#SOC 不到 95 不睡觉"
+      bar_anxiety: 180
+      bar_full: 200
+      bar_home: 320
+
+  # 数据不足：charge_count=3 < min_sample 5 -> unscored
+  - name: insufficient-sample
+    row:
+      charge_count: 3
+      avg_start_soc: 50.0
+      avg_end_soc: 90.0
+      full_charge_count: 1
+      home_charge_count: 2
+      night_charge_count: 1
+      morning_charge_count: 1
+      avg_charge_min: 35.0
+      total_kwh: 45.0
+    expect_unscored: true

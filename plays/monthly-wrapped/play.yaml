@@ -1,0 +1,128 @@
+schema_version: 1
+name: monthly-wrapped
+title: 月度行车报告
+emoji: "📊"
+description: "每月一张可保存分享的行车报告卡：总里程、出行次数、最长一程、夜行占比、充电汇总与月度自嘲称号。与 12 月年度 wrapped 同构，月度版即年度版的数据 schema 试验田。"
+scope: "read:drives"
+params:
+  default_days: 30
+sql: |
+  WITH d AS (
+    SELECT id, distance, duration_min, speed_max,
+           (start_date AT TIME ZONE 'UTC' AT TIME ZONE :tz) AS ls
+    FROM drives
+    WHERE car_id = :car_id AND start_date >= :start AND start_date < :end
+      AND end_date IS NOT NULL AND distance > 0
+  ), byday AS (
+    SELECT ls::date AS day, sum(distance) AS km
+    FROM d GROUP BY 1
+  ), c AS (
+    SELECT charge_energy_added
+    FROM charging_processes
+    WHERE car_id = :car_id AND start_date >= :start AND start_date < :end
+      AND end_date IS NOT NULL
+  )
+  SELECT
+    (SELECT count(*) FROM d)                                          AS drive_count,
+    COALESCE((SELECT sum(distance) FROM d), 0)                        AS total_km,
+    COALESCE((SELECT sum(duration_min) FROM d), 0)                    AS total_min,
+    COALESCE((SELECT max(distance) FROM d), 0)                        AS longest_km,
+    COALESCE((SELECT max(speed_max) FROM d), 0)                       AS top_speed,
+    COALESCE((SELECT count(*) FILTER (WHERE EXTRACT(HOUR FROM ls) >= 22
+              OR EXTRACT(HOUR FROM ls) < 6) FROM d), 0)               AS night_drives,
+    COALESCE((SELECT count(*) FROM byday), 0)                         AS active_days,
+    COALESCE((SELECT to_char(day, 'MM-DD') FROM byday
+              ORDER BY km DESC LIMIT 1), '--')                        AS busiest_day,
+    COALESCE((SELECT km FROM byday ORDER BY km DESC LIMIT 1), 0)      AS busiest_day_km,
+    COALESCE((SELECT mode() WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM ls))
+              FROM d), 0)                                             AS fav_hour,
+    (SELECT count(*) FROM c)                                          AS charge_count,
+    COALESCE((SELECT sum(charge_energy_added) FROM c), 0)             AS energy_added_kwh
+min_sample:
+  field: drive_count
+  min: 8
+compute:
+  - var: total_km_r
+    expr: "ROUND(total_km)"
+  - var: hours_1dp
+    expr: "ROUND(total_min / 6) / 10"
+  - var: avg_km
+    expr: "ROUND(total_km / GREATEST(drive_count, 1))"
+  - var: night_pct
+    expr: "ROUND(night_drives * 100 / GREATEST(drive_count, 1))"
+  - var: longest_r
+    expr: "ROUND(longest_km)"
+  - var: top_speed_r
+    expr: "ROUND(top_speed)"
+  - var: kwh_r
+    expr: "ROUND(energy_added_kwh)"
+  - var: busiest_km_r
+    expr: "ROUND(busiest_day_km)"
+  - var: fav_hour_i
+    expr: "ROUND(fav_hour)"
+  - var: band
+    level:
+      input: total_km
+      thresholds:
+        - { lt: 100, label: b1 }
+        - { lt: 400, label: b2 }
+        - { lt: 1000, label: b3 }
+        - { lt: 2500, label: b4 }
+        - { label: b5 }
+  - var: night_tag
+    level:
+      input: night_pct
+      thresholds:
+        - { lt: 5, label: "白日行者" }
+        - { lt: 20, label: "偶尔夜归人" }
+        - { lt: 40, label: "夜路常客" }
+        - { label: "凌晨高架巡逻队" }
+  - var: persona
+    lookup:
+      key: band
+      table: bands
+      default: { title: "神秘车主", desc: "这个月的故事，数据还没讲完", emoji: "🚗" }
+  - var: summary
+    template: "本月 ${drive_count} 次出行，跑了 ${total_km_r} km · ${night_tag}"
+tables:
+  bands:
+    b1:
+      title: "电动盆栽"
+      desc: "本月车的主要功能：占车位"
+      emoji: "🪴"
+    b2:
+      title: "三公里生活圈圈主"
+      desc: "最远的远方，是另一家商场的地库"
+      emoji: "🛒"
+    b3:
+      title: "城市通勤特种兵"
+      desc: "两点一线，电比你先到岗打卡"
+      emoji: "🏙️"
+    b4:
+      title: "城际穿梭常旅客"
+      desc: "高速服务区的充电桩都认识你了"
+      emoji: "🛣️"
+    b5:
+      title: "人形迁徙候鸟"
+      desc: "这不叫开车，这叫带着家搬迁"
+      emoji: "🦅"
+output:
+  fields:
+    - { name: total_km, from: total_km_r, type: number }
+    - { name: drive_count, from: drive_count, type: number }
+    - { name: hours, from: hours_1dp, type: number }
+    - { name: avg_km, from: avg_km, type: number }
+    - { name: longest_km, from: longest_r, type: number }
+    - { name: top_speed, from: top_speed_r, type: number }
+    - { name: night_pct, from: night_pct, type: number }
+    - { name: active_days, from: active_days, type: number }
+    - { name: busiest_day, from: busiest_day, type: string }
+    - { name: busiest_day_km, from: busiest_km_r, type: number }
+    - { name: fav_hour, from: fav_hour_i, type: number }
+    - { name: charge_count, from: charge_count, type: number }
+    - { name: energy_kwh, from: kwh_r, type: number }
+    - { name: persona, from: persona, type: object }
+    - { name: night_tag, from: night_tag, type: string }
+    - { name: summary, from: summary, type: string }
+card:
+  template: card.svg.tmpl

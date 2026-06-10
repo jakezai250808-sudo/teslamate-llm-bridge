@@ -1,0 +1,210 @@
+# ============================================================================
+# 你的车里住着两个灵魂 —— 夫妻/家庭共驾对比玩法
+#
+# 玩法心智：
+#   同一辆车，行程按最高车速中位数一刀劈两半，各成一个「灵魂」A/B。
+#   A = 温柔灵魂（speed_max <= 中位数），B = 激进灵魂（speed_max > 中位数）。
+#   各自画像：出行次数 / 平均单程 / 夜驾占比 / 激进度 0-100 + 风格标签。
+#   钩子：「猜猜哪个是你哪个是TA」
+#
+# 分桶设计（稳健性说明）：
+#   用 speed_max 中位数（PERCENTILE_CONT(0.5)）做分割线而非均值：
+#   - 中位数不被偶发高速/超低速行程拉偏，适合真实复杂城市路况。
+#   - speed_max 代表单次行程里「踩最狠的那脚」，对驾驶风格最有辨识力。
+#   - 不依赖时间段（夜驾等），避免与夜驾占比轴强相关。
+#   - 高速公路保底 ~80 km/h 让分割稳定，纯城区通勤也能区分激进 vs 温柔。
+#   两桶各自统计：
+#     count / avg_km / night_pct（22:00-06:00 本地时间） / avg_speed_max（激进度代理）
+#   激进度索引 = LEAST(100, ROUND(avg_speed_max * 2 / 3))：
+#     60 km/h → 40，90 km/h → 60，120 km/h → 80，150 km/h → 100
+#   min_sample: total_count >= 10（至少 10 次行程才能有意义地分桶）
+# ============================================================================
+
+schema_version: 1
+
+name: ab-couple-souls
+title: 你的车里住着两个灵魂
+emoji: "AB"
+
+description: >-
+  同一辆车的行程按驾驶风格聚成 A/B 两个灵魂，各自画像（次数/单程/夜驾/激进度），
+  配「猜猜哪个是你哪个是TA」互动钩子。近 30 天数据，适合夫妻/家庭共驾车主。
+  用户问「谁开车更猛/温柔/夜驾多/我俩风格对比」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 单条语句，CTE 分三层：
+#   1. drv：基础行程（排除未闭合行程 end_date IS NOT NULL 和零里程）
+#   2. median_cte：计算 speed_max 中位数（分桶阈值）
+#   3. 最终 SELECT：A/B 两桶各自聚合 + 总数 + 中位数
+# 时区处理：start_date 是 UTC naive，AT TIME ZONE 'UTC' AT TIME ZONE :tz 转本地小时
+# 夜驾窗口：22:00-06:00（比 driving-personality 的 22:00-05:00 宽一格，家庭场景早起也算夜）
+# 分桶守卫：split_ok = a_count >= 3 AND b_count >= 3 时返 total_count，否则返 0；
+#   min_sample 守 split_ok >= 10，同时覆盖「总量不足」与「单桶为空/过少」两类无效分割。
+sql: |-
+  WITH drv AS (
+    SELECT
+      id,
+      distance,
+      speed_max,
+      (start_date AT TIME ZONE 'UTC') AT TIME ZONE :tz AS local_start
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date BETWEEN :start AND :end
+      AND end_date IS NOT NULL
+      AND distance IS NOT NULL
+      AND distance > 0
+      AND speed_max IS NOT NULL
+  ),
+  median_cte AS (
+    SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY speed_max) AS speed_median
+    FROM drv
+  )
+  SELECT
+    COUNT(*) AS total_count,
+    (SELECT speed_median FROM median_cte) AS speed_median,
+    COALESCE(SUM(CASE WHEN speed_max <= (SELECT speed_median FROM median_cte) THEN 1 ELSE 0 END), 0) AS a_count,
+    COALESCE(AVG(CASE WHEN speed_max <= (SELECT speed_median FROM median_cte) THEN distance END), 0) AS a_avg_km,
+    COALESCE(AVG(CASE WHEN speed_max <= (SELECT speed_median FROM median_cte) THEN speed_max END), 0) AS a_avg_speed_max,
+    COALESCE(SUM(CASE WHEN speed_max <= (SELECT speed_median FROM median_cte)
+                       AND (EXTRACT(HOUR FROM local_start) >= 22
+                            OR EXTRACT(HOUR FROM local_start) < 6)
+                      THEN 1 ELSE 0 END), 0) AS a_night_count,
+    COALESCE(SUM(CASE WHEN speed_max > (SELECT speed_median FROM median_cte) THEN 1 ELSE 0 END), 0) AS b_count,
+    COALESCE(AVG(CASE WHEN speed_max > (SELECT speed_median FROM median_cte) THEN distance END), 0) AS b_avg_km,
+    COALESCE(AVG(CASE WHEN speed_max > (SELECT speed_median FROM median_cte) THEN speed_max END), 0) AS b_avg_speed_max,
+    COALESCE(SUM(CASE WHEN speed_max > (SELECT speed_median FROM median_cte)
+                       AND (EXTRACT(HOUR FROM local_start) >= 22
+                            OR EXTRACT(HOUR FROM local_start) < 6)
+                      THEN 1 ELSE 0 END), 0) AS b_night_count,
+    CASE WHEN
+      COALESCE(SUM(CASE WHEN speed_max <= (SELECT speed_median FROM median_cte) THEN 1 ELSE 0 END), 0) >= 3
+      AND COALESCE(SUM(CASE WHEN speed_max > (SELECT speed_median FROM median_cte) THEN 1 ELSE 0 END), 0) >= 3
+    THEN COUNT(*) ELSE 0 END AS split_ok
+  FROM drv
+
+min_sample:
+  field: split_ok
+  min: 10
+
+compute:
+  # ---- A 灵魂（温柔桶）基础指标 ----
+  - var: a_avg_km_r
+    expr: "ROUND(a_avg_km, 1)"
+  - var: a_night_pct
+    expr: "ROUND(a_night_count * 100 / GREATEST(a_count, 1))"
+  - var: a_aggro
+    expr: "LEAST(100, ROUND(a_avg_speed_max * 2 / 3))"
+
+  # ---- B 灵魂（激进桶）基础指标 ----
+  - var: b_avg_km_r
+    expr: "ROUND(b_avg_km, 1)"
+  - var: b_night_pct
+    expr: "ROUND(b_night_count * 100 / GREATEST(b_count, 1))"
+  - var: b_aggro
+    expr: "LEAST(100, ROUND(b_avg_speed_max * 2 / 3))"
+
+  # ---- 速度中位数取整（卡片展示）----
+  - var: speed_median_r
+    expr: "ROUND(speed_median)"
+
+  # ---- A 灵魂风格标签索引（激进度 0-100 → 5 档）----
+  - var: a_style_idx
+    level:
+      input: a_aggro
+      thresholds:
+        - { lt: 30, label: "ultra_gentle" }
+        - { lt: 45, label: "gentle" }
+        - { lt: 60, label: "balanced" }
+        - { lt: 75, label: "spirited" }
+        - { label: "aggressive" }
+
+  # ---- B 灵魂风格标签索引 ----
+  - var: b_style_idx
+    level:
+      input: b_aggro
+      thresholds:
+        - { lt: 30, label: "ultra_gentle" }
+        - { lt: 45, label: "gentle" }
+        - { lt: 60, label: "balanced" }
+        - { lt: 75, label: "spirited" }
+        - { label: "aggressive" }
+
+  # ---- A 灵魂人格查表 ----
+  - var: a_persona
+    lookup:
+      key: a_style_idx
+      table: soul_styles
+      default:
+        name: "神秘温柔体"
+        tag: "#车速不透露内心"
+        color: "#94a3b8"
+
+  # ---- B 灵魂人格查表 ----
+  - var: b_persona
+    lookup:
+      key: b_style_idx
+      table: soul_styles
+      default:
+        name: "神秘激进体"
+        tag: "#油门也不代表一切"
+        color: "#f87171"
+
+  # ---- 卡片条形图宽度（轨道 380px，激进度 0-100 映射）----
+  - var: bar_a_aggro
+    expr: "a_aggro * 380 / 100"
+  - var: bar_b_aggro
+    expr: "b_aggro * 380 / 100"
+  - var: bar_a_night
+    expr: "a_night_pct * 380 / 100"
+  - var: bar_b_night
+    expr: "b_night_pct * 380 / 100"
+
+  # ---- 摘要文本 ----
+  - var: summary
+    template: "这辆车住着两个灵魂：A 灵魂 ${a_count} 次温柔出行（均 ${a_avg_km_r}km）vs B 灵魂 ${b_count} 次激情驾驶（均 ${b_avg_km_r}km）——猜猜哪个是你哪个是TA"
+
+tables:
+  soul_styles:
+    ultra_gentle:
+      name: "云朵漫步派"
+      tag: "#比ETC更温柔"
+      color: "#38bdf8"
+    gentle:
+      name: "佛系巡航者"
+      tag: "#油门是用来轻踩的"
+      color: "#34d399"
+    balanced:
+      name: "均衡通勤手"
+      tag: "#不快不慢刚刚好"
+      color: "#a78bfa"
+    spirited:
+      name: "节奏感玩家"
+      tag: "#该快快该慢慢"
+      color: "#fbbf24"
+    aggressive:
+      name: "油门深踩党"
+      tag: "#电门就是用来榨干的"
+      color: "#f87171"
+
+output:
+  fields:
+    - { name: total_count, from: total_count, type: number }
+    - { name: speed_median, from: speed_median_r, type: number }
+    - { name: a_count, from: a_count, type: number }
+    - { name: a_avg_km, from: a_avg_km_r, type: number }
+    - { name: a_night_pct, from: a_night_pct, type: number }
+    - { name: a_aggro, from: a_aggro, type: number }
+    - { name: a_persona, from: a_persona, type: object }
+    - { name: b_count, from: b_count, type: number }
+    - { name: b_avg_km, from: b_avg_km_r, type: number }
+    - { name: b_night_pct, from: b_night_pct, type: number }
+    - { name: b_aggro, from: b_aggro, type: number }
+    - { name: b_persona, from: b_persona, type: object }
+    - { name: summary, from: summary, type: string }
+
+card:
+  template: card.svg.tmpl

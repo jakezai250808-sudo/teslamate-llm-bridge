@@ -1,0 +1,178 @@
+# ============================================================================
+# 周末战士指数 —— 统计周末 vs 工作日里程/次数对比，算出 0-100 战士分，判定车主类型。
+#
+# warrior_score = 里程占比×0.6 + 次数占比×0.4，值域 0-100。
+# 五档：commuter(<20) / light_commuter(<40) / balanced(<60) / weekend_leaner(<80) / warrior(≥80)
+#
+# DOW: 0=Sunday, 6=Saturday（PostgreSQL EXTRACT DOW 规范）
+# 双重时区转换确保按本地日期判断，避免 UTC 午夜跨天边界导致周五晚误判为周六。
+# ============================================================================
+
+schema_version: 1
+
+name: weekend-warrior
+title: 周末战士指数
+emoji: "⚔️"
+
+description: >-
+  统计近 N 天周末与工作日的里程/出行次数对比，算出 0-100 战士分，判定你是
+  「通勤奴隶」还是「周末战士」。
+  用户问「我是通勤型还是周末型 / 周末里程多吗 / 我是不是周末战士」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+sql: |-
+  WITH d AS (
+    SELECT
+      id,
+      distance,
+      EXTRACT(DOW FROM (start_date AT TIME ZONE 'UTC') AT TIME ZONE :tz) AS dow
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date BETWEEN :start AND :end
+      AND end_date IS NOT NULL
+      AND distance > 0
+  ),
+  weekend_d AS (
+    SELECT
+      COUNT(*) AS wknd_trips,
+      COALESCE(SUM(distance), 0) AS wknd_km
+    FROM d
+    WHERE dow IN (0, 6)
+  ),
+  weekday_d AS (
+    SELECT
+      COUNT(*) AS wkday_trips,
+      COALESCE(SUM(distance), 0) AS wkday_km
+    FROM d
+    WHERE dow BETWEEN 1 AND 5
+  )
+  SELECT
+    (SELECT COUNT(*) FROM d)             AS total_trips,
+    wknd_trips,
+    wknd_km,
+    wkday_trips,
+    wkday_km
+  FROM weekend_d, weekday_d
+
+min_sample:
+  field: total_trips
+  min: 6
+
+compute:
+  # ---- 基础指标 ----
+  - var: wknd_km_r
+    expr: "ROUND(wknd_km)"
+  - var: wkday_km_r
+    expr: "ROUND(wkday_km)"
+
+  # 周末占里程比 0-100（wkday_km_pct 须在 bar_wkday_km 之前定义）
+  - var: wknd_km_pct
+    expr: "ROUND(wknd_km * 100 / GREATEST(wknd_km + wkday_km, 1))"
+  - var: wkday_km_pct
+    expr: "100 - wknd_km_pct"
+
+  # 周末占出行次数比 0-100
+  - var: wknd_trip_pct
+    expr: "ROUND(wknd_trips * 100 / GREATEST(total_trips, 1))"
+
+  # 单次平均里程：周末 vs 工作日
+  - var: wknd_avg_km
+    expr: "ROUND(wknd_km / GREATEST(wknd_trips, 1))"
+  - var: wkday_avg_km
+    expr: "ROUND(wkday_km / GREATEST(wkday_trips, 1))"
+
+  # 综合战士分：里程占比权重 0.6 + 次数占比权重 0.4，0-100
+  - var: warrior_score
+    expr: "ROUND(wknd_km_pct * 6 / 10 + wknd_trip_pct * 4 / 10)"
+
+  # 卡片条形宽度（轨道 540px）
+  - var: bar_wknd_km
+    expr: "wknd_km_pct * 540 / 100"
+  - var: bar_wkday_km
+    expr: "LEAST(540, ROUND(wkday_km_pct * 540 / 100))"
+
+  # ---- 档位判定 ----
+  - var: identity
+    level:
+      input: warrior_score
+      thresholds:
+        - { lt: 20, label: "commuter" }
+        - { lt: 40, label: "light_commuter" }
+        - { lt: 60, label: "balanced" }
+        - { lt: 80, label: "weekend_leaner" }
+        - { label: "warrior" }
+
+  # ---- 查表 ----
+  - var: persona
+    lookup:
+      key: identity
+      table: identities
+      default:
+        name: "数据幽灵"
+        desc: "出行规律奇异，无法归类，建议打开行程记录检查。"
+        tag: "#系统未收录新物种"
+
+  # 中文名称 flat 变量（引擎 template 只支持 ${flat_var}，不支持 ${obj.field} 点路径；
+  # 此处用 level 直接输出中文 label，与 identities 表 name 字段保持同步）
+  - var: identity_label
+    level:
+      input: warrior_score
+      thresholds:
+        - { lt: 20, label: "通勤奴隶" }
+        - { lt: 40, label: "周末偶尔出逃者" }
+        - { lt: 60, label: "七天全勤打工人" }
+        - { lt: 80, label: "周末预备役" }
+        - { label: "周末战士" }
+
+  - var: summary
+    template: "近 ${window_days} 天：周末 ${wknd_trips} 次出行 ${wknd_km_r} km，工作日 ${wkday_trips} 次 ${wkday_km_r} km。战士分 ${warrior_score}/100，${identity_label}。"
+
+# 五档档位表
+tables:
+  identities:
+    commuter:
+      name: "通勤奴隶"
+      desc: "车是上班的交通工具，周末？周末车休息，你也休息。"
+      tag: "#周末车位不给充满电"
+
+    light_commuter:
+      name: "周末偶尔出逃者"
+      desc: "工作日把车开老了，周末偶尔出来喘口气，但也没远。"
+      tag: "#出发三公里就转回来了"
+
+    balanced:
+      name: "七天全勤打工人"
+      desc: "工作日通勤，周末遛娃。你不是在开车，你是在服役。"
+      tag: "#车轮是我的第五肢"
+
+    weekend_leaner:
+      name: "周末预备役"
+      desc: "工作日只挪车位，周末电门踩深一格，算是把上班的委屈还给了高速公路。"
+      tag: "#周五晚充满电是仪式感"
+
+    warrior:
+      name: "周末战士"
+      desc: "周一到周五车蹲着充电，周六周日路上的里程超过很多人一整月。出来玩就要玩够本。"
+      tag: "#超充排队是周末标配"
+
+output:
+  fields:
+    - { name: warrior_score, from: warrior_score, type: number }
+    - { name: identity, from: identity, type: string }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
+    - { name: wknd_km, from: wknd_km_r, type: number }
+    - { name: wkday_km, from: wkday_km_r, type: number }
+    - { name: wknd_trips, from: wknd_trips, type: number }
+    - { name: wkday_trips, from: wkday_trips, type: number }
+    - { name: wknd_km_pct, from: wknd_km_pct, type: number }
+    - { name: wknd_trip_pct, from: wknd_trip_pct, type: number }
+    - { name: wknd_avg_km, from: wknd_avg_km, type: number }
+    - { name: wkday_avg_km, from: wkday_avg_km, type: number }
+
+card:
+  template: card.svg.tmpl

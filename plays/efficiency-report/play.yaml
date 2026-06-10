@@ -1,0 +1,192 @@
+# ============================================================================
+# 能效报告 —— 把 Wh/km 翻译成「本期多花/省了多少钱」，
+# 激励省电车主分享，给耗电车主自嘲钩子。
+#
+# 核心指标：
+#   actual_wh_km  = total_kwh_charged * 1000 / total_km（回补能效）
+#   efficiency_ratio = actual_wh_km * 100 / baseline（实际 / 基准 × 100）
+#   delta_cost = 差价能耗 × 0.65元/kWh × 里程 / 1000
+#
+# 档位：S<70 / A<90 / B<105 / C<120 / D<140 / F≥140（efficiency_ratio 为输入）
+# ============================================================================
+
+schema_version: 1
+
+name: efficiency-report
+title: 能效报告
+emoji: "⚡"
+
+description: >-
+  用近 30 天充电与行驶数据计算实际能效（Wh/km），与出厂基准对比，
+  换算成电费差价，给出 S/A/B/C/D/F 六档等级和自嘲/炫耀文案。
+  用户问「我的能耗 / 省了多少电 / 能效怎么样 / 我的车费电吗」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# SQL：两个 CTE 分别聚合行程和充电，再 cross join cars 取基准；
+# 乘 1000.0 强制浮点，避免整除；cars.efficiency 单位 kWh/km（TeslaMate schema），
+# 乘 1000 转为 Wh/km 后与 actual_wh_km 同单位比较；
+# efficiency=0 或 NULL 时 fallback 0.152 kWh/km（Model 3 通用基准 152 Wh/km）。
+sql: |-
+  WITH d AS (
+    SELECT
+      COUNT(*)                   AS drive_count,
+      COALESCE(SUM(distance), 0) AS total_km,
+      COALESCE(SUM(duration_min), 0) AS total_drive_min
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start AND start_date < :end
+      AND end_date IS NOT NULL
+      AND distance > 0
+  ),
+  c AS (
+    SELECT
+      COUNT(*)                            AS charge_sessions,
+      COALESCE(SUM(charge_energy_added), 0) AS total_kwh_charged
+    FROM charging_processes
+    WHERE car_id = :car_id
+      AND start_date >= :start AND start_date < :end
+      AND end_date IS NOT NULL
+      AND charge_energy_added > 0
+  ),
+  car AS (
+    SELECT COALESCE(NULLIF(efficiency, 0), 0.152) * 1000.0 AS baseline_wh_per_km
+    FROM cars
+    WHERE id = :car_id
+    LIMIT 1
+  )
+  SELECT
+    d.drive_count,
+    d.total_km,
+    d.total_drive_min,
+    c.charge_sessions,
+    c.total_kwh_charged,
+    car.baseline_wh_per_km,
+    CASE WHEN d.total_km > 0
+         THEN c.total_kwh_charged * 1000.0 / d.total_km
+         ELSE 0 END              AS raw_wh_per_km
+  FROM d, c, car
+
+min_sample:
+  field: drive_count
+  min: 5
+
+compute:
+  # ---- 基础能效 ----
+  - var: actual_wh_km
+    expr: "ROUND(raw_wh_per_km)"
+
+  - var: baseline
+    expr: "ROUND(baseline_wh_per_km)"
+
+  # 差值：正数 = 超耗，负数 = 省电
+  - var: delta_wh_km
+    expr: "ROUND(actual_wh_km - baseline)"
+
+  # 能效比：实际 / 基准 × 100；100 = 恰好对齐，120 = 超耗 20%，80 = 省了 20%
+  - var: efficiency_ratio
+    expr: "LEAST(200, ROUND(actual_wh_km * 100 / GREATEST(baseline, 1)))"
+
+  # ---- 电费换算 (0.65 元/kWh 家充均价) ----
+  # delta_kwh_per_100km = delta_wh_km * 100 / 1000
+  - var: delta_kwh_per_100km
+    expr: "ROUND(delta_wh_km * 100 / 1000, 2)"
+
+  # delta_cost_per_100km = delta_kwh_per_100km × 0.65
+  # 用 65 / 100 避免浮点字面量精度，ROUND 保留 2 位小数
+  - var: delta_cost_per_100km
+    expr: "ROUND(delta_kwh_per_100km * 65 / 100, 2)"
+
+  # 本期超耗/节省总金额
+  - var: period_delta_cost
+    expr: "ROUND(delta_cost_per_100km * total_km / 100, 1)"
+
+  # 卡片条形（轨道 540px），效率比 100 对应 270px；封顶 540
+  - var: bar_actual_px
+    expr: "LEAST(540, ROUND(efficiency_ratio * 540 / 200))"
+
+  # 基准线固定在 270px（ratio=100 时的位置）
+  - var: bar_baseline_px
+    expr: "LEAST(540, ROUND(100 * 540 / 200))"
+
+  # ---- 等级判定 ----
+  - var: grade_key
+    level:
+      input: efficiency_ratio
+      thresholds:
+        - { lt: 70,  label: "S" }
+        - { lt: 90,  label: "A" }
+        - { lt: 105, label: "B" }
+        - { lt: 120, label: "C" }
+        - { lt: 140, label: "D" }
+        - { label: "F" }
+
+  - var: grade_info
+    lookup:
+      key: grade_key
+      table: grades
+      default:
+        title: "量子态车主"
+        desc: "你的能效已超出波动方程的解域。"
+        tag: "#薛定谔的电表"
+        color: "#888888"
+
+  - var: summary
+    template: "近 ${window_days} 天实际 ${actual_wh_km} Wh/km（基准 ${baseline} Wh/km），效率比 ${efficiency_ratio}%，每百公里 ${delta_cost_per_100km} 元差价，本期合计 ${period_delta_cost} 元。"
+
+# 六档等级文案：S/A → 正向激励（炫耀），B → 中性，C/D/F → 自嘲（传播钩子）
+tables:
+  grades:
+    "S":
+      title: "能效天花板"
+      desc: "比出厂标定省 30%+，你的右脚是精密仪器。省下的电费够买两杯奶茶。"
+      tag: "#电表都不好意思转"
+      color: "#00e5a0"
+    "A":
+      title: "省电达人"
+      desc: "实际能耗比基准低 10-30%，预判红绿灯的艺术已融入肌肉记忆。"
+      tag: "#能量回收选手"
+      color: "#4dd0e1"
+    "B":
+      title: "正常发挥"
+      desc: "能效贴着基准线走，不浪费也没特别节约，电费账单符合预期。"
+      tag: "#数据说你挺正常的"
+      color: "#81c784"
+    "C":
+      title: "电费有点多"
+      desc: "超出基准 5-20%，空调可能开得比较猛，或者右脚有点急性子。"
+      tag: "#下次轻踩两脚试试"
+      color: "#ffb74d"
+    "D":
+      title: "重度耗电体"
+      desc: "超出基准 20-40%，你和电动车的省钱优势正在激烈对冲。"
+      tag: "#燃油车：哈喽久违"
+      color: "#ef5350"
+    "F":
+      title: "用电大户勋章"
+      desc: "超出基准 40%+，本期多花的电费够给邻居充满一辆小鹏。恭喜。"
+      tag: "#国家电网VIP感谢函"
+      color: "#b71c1c"
+
+output:
+  fields:
+    - { name: actual_wh_km,          from: actual_wh_km,          type: number }
+    - { name: baseline,              from: baseline,              type: number }
+    - { name: efficiency_ratio,      from: efficiency_ratio,      type: number }
+    - { name: delta_wh_km,           from: delta_wh_km,           type: number }
+    - { name: delta_kwh_per_100km,   from: delta_kwh_per_100km,   type: number }
+    - { name: delta_cost_per_100km,  from: delta_cost_per_100km,  type: number }
+    - { name: period_delta_cost,     from: period_delta_cost,     type: number }
+    - { name: grade_key,             from: grade_key,             type: string }
+    - { name: grade_info,            from: grade_info,            type: object }
+    - { name: total_km,              from: total_km,              type: number }
+    - { name: drive_count,           from: drive_count,           type: number }
+    - { name: charge_sessions,       from: charge_sessions,       type: number }
+    - { name: total_kwh_charged,     from: total_kwh_charged,     type: number }
+    - { name: summary,               from: summary,               type: string }
+
+card:
+  template: card.svg.tmpl

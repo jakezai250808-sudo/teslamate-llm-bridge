@@ -1,0 +1,143 @@
+# ============================================================================
+# ab-couple-souls fixtures —— CI（PlayRegistryTest.repoPlays_loadAndFixturesAllPass）
+# 验证 compute 流水线：A/B 分桶指标 / 激进度 / 风格标签查表 / 摘要模板全对。
+#
+# 分桶逻辑：speed_max <= speed_median → A 桶（温柔），speed_max > speed_median → B 桶（激进）
+# 激进度公式：LEAST(100, ROUND(avg_speed_max * 2 / 3))
+# 风格标签档位：<30→ultra_gentle, <45→gentle, <60→balanced, <75→spirited, >=75→aggressive
+# split_ok：SQL 内联守卫，a_count>=3 AND b_count>=3 时等于 total_count，否则为 0。
+#   min_sample 守 split_ok >= 10，同时覆盖「总量不足」与「单桶过少（<3）」两类无效分割。
+# ============================================================================
+
+fixtures:
+  # 夫妻均衡共驾：A 温柔 15 次 / B 激进 15 次，均衡对比
+  # a_aggro = ROUND(65 * 2/3) = 43 <45 → gentle 佛系巡航者
+  # b_aggro = ROUND(110 * 2/3) = 73 <75 → spirited 节奏感玩家
+  # a_night_pct = ROUND(3*100/15) = 20
+  # b_night_pct = ROUND(7*100/15) = 47
+  - name: couple-balanced
+    window_days: 30
+    row:
+      total_count: 30
+      speed_median: 87.0
+      a_count: 15
+      a_avg_km: 12.5
+      a_avg_speed_max: 65.0
+      a_night_count: 3
+      b_count: 15
+      b_avg_km: 18.2
+      b_avg_speed_max: 110.0
+      b_night_count: 7
+      split_ok: 30
+    expect:
+      a_aggro: 43
+      b_aggro: 73
+      a_avg_km_r: 12.5
+      b_avg_km_r: 18.2
+      a_night_pct: 20
+      b_night_pct: 47
+      a_style_idx: "gentle"
+      b_style_idx: "spirited"
+      a_persona.name: "佛系巡航者"
+      a_persona.tag: "#油门是用来轻踩的"
+      b_persona.name: "节奏感玩家"
+      b_persona.tag: "#该快快该慢慢"
+      bar_a_aggro: 163.4
+      bar_b_aggro: 277.4
+      bar_a_night: 76.0
+      bar_b_night: 178.6
+      speed_median_r: 87
+      summary: "这辆车住着两个灵魂：A 灵魂 15 次温柔出行（均 12.5km）vs B 灵魂 15 次激情驾驶（均 18.2km）——猜猜哪个是你哪个是TA"
+
+  # 单人主驾 + 偶发高速：A 城市通勤 25 次 / B 高速远征 5 次
+  # a_aggro = ROUND(55 * 2/3) = 37 <45 → gentle
+  # b_aggro = ROUND(130 * 2/3) = 87 >=75 → aggressive 油门深踩党
+  # a_night_pct = ROUND(0*100/25) = 0
+  # b_night_pct = ROUND(2*100/5) = 40
+  - name: solo-city-plus-highway
+    window_days: 30
+    row:
+      total_count: 30
+      speed_median: 70.0
+      a_count: 25
+      a_avg_km: 8.3
+      a_avg_speed_max: 55.0
+      a_night_count: 0
+      b_count: 5
+      b_avg_km: 45.0
+      b_avg_speed_max: 130.0
+      b_night_count: 2
+      split_ok: 30
+    expect:
+      a_aggro: 37
+      b_aggro: 87
+      a_night_pct: 0
+      b_night_pct: 40
+      a_style_idx: "gentle"
+      b_style_idx: "aggressive"
+      a_persona.name: "佛系巡航者"
+      b_persona.name: "油门深踩党"
+      b_persona.tag: "#电门就是用来榨干的"
+      bar_b_aggro: 330.6
+
+  # 极限验证：两个灵魂差异最大——超温柔 vs 超激进，覆盖 ultra_gentle / aggressive 边界
+  # a_aggro = ROUND(40 * 2/3) = 27 <30 → ultra_gentle 云朵漫步派
+  # b_aggro = ROUND(145 * 2/3) = 97 → LEAST(100, 97) = 97 >=75 → aggressive
+  # b_aggro_capped = LEAST(100, ROUND(145*2/3)) = LEAST(100, 97) = 97
+  - name: extreme-contrast
+    window_days: 30
+    row:
+      total_count: 20
+      speed_median: 75.0
+      a_count: 10
+      a_avg_km: 5.0
+      a_avg_speed_max: 40.0
+      a_night_count: 1
+      b_count: 10
+      b_avg_km: 60.0
+      b_avg_speed_max: 145.0
+      b_night_count: 8
+      split_ok: 20
+    expect:
+      a_aggro: 27
+      b_aggro: 97
+      a_style_idx: "ultra_gentle"
+      b_style_idx: "aggressive"
+      a_persona.name: "云朵漫步派"
+      a_persona.tag: "#比ETC更温柔"
+      b_persona.name: "油门深踩党"
+      a_night_pct: 10
+      b_night_pct: 80
+
+  # 数据不足：total_count=7，split_ok=7（a_count=4>=3，b_count=3>=3）但 7 < min_sample 10 → unscored
+  - name: insufficient-sample
+    row:
+      total_count: 7
+      speed_median: 80.0
+      a_count: 4
+      a_avg_km: 10.0
+      a_avg_speed_max: 60.0
+      a_night_count: 0
+      b_count: 3
+      b_avg_km: 15.0
+      b_avg_speed_max: 100.0
+      b_night_count: 1
+      split_ok: 7
+    expect_unscored: true
+
+  # 单桶不足：total_count=20 但 b_count=2 < 3 → split_ok=0 < 10 → unscored
+  # 验证「所有行程速度相近时 speed_median = 90，b_count 接近 0」的场景
+  - name: thin-b-bucket
+    row:
+      total_count: 20
+      speed_median: 90.0
+      a_count: 18
+      a_avg_km: 9.0
+      a_avg_speed_max: 72.0
+      a_night_count: 2
+      b_count: 2
+      b_avg_km: 11.0
+      b_avg_speed_max: 105.0
+      b_night_count: 0
+      split_ok: 0
+    expect_unscored: true

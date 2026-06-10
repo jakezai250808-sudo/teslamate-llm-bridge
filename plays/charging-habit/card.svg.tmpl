@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- 充电人格八型分享卡：1080x1080，深海蓝黑底 + 琥珀橙视觉锤 + 三轴量条 + 数字看板 + 水印。
+       占位符由引擎注入并 XML 转义；量条宽度 bar_* 为 compute 数值 var（轨道 400px）。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1b2a"/>
+      <stop offset="0.55" stop-color="#111f30"/>
+      <stop offset="1" stop-color="#162234"/>
+    </linearGradient>
+    <linearGradient id="anxietygrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff6b35"/>
+      <stop offset="1" stop-color="#ff9a5c"/>
+    </linearGradient>
+    <linearGradient id="codegrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f5a623"/>
+      <stop offset="1" stop-color="#ffd166"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <!-- 品牌区 -->
+  <text x="540" y="76" text-anchor="middle" fill="#f1f5f9" font-size="48" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">电车有数 · 充电人格</text>
+  <text x="540" y="126" text-anchor="middle" fill="#94a3b8" font-size="26"
+        font-family="Noto Sans CJK SC,sans-serif">${window_label}充电记录 · 三轴八型</text>
+  <line x1="120" y1="162" x2="960" y2="162" stroke="#1e3a5f" stroke-width="2"/>
+
+  <!-- 超大人格码 -->
+  <text x="540" y="234" text-anchor="middle" fill="#64748b" font-size="26"
+        font-family="Noto Sans CJK SC,sans-serif">你的充电人格码</text>
+  <text x="540" y="398" text-anchor="middle" fill="url(#codegrad)" font-size="180" font-weight="bold"
+        letter-spacing="12" font-family="Noto Sans CJK SC,sans-serif">${code}</text>
+
+  <!-- 人格名 + 一句话画像 -->
+  <text x="540" y="474" text-anchor="middle" fill="#f5a623" font-size="52" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${persona.name}</text>
+  <text x="540" y="528" text-anchor="middle" fill="#cbd5e1" font-size="26"
+        font-family="Noto Sans CJK SC,sans-serif">${persona.desc}</text>
+
+  <!-- 自嘲徽章 -->
+  <rect x="260" y="554" width="560" height="54" rx="27" fill="#162844" stroke="#2d4a6e" stroke-width="1.5"/>
+  <text x="540" y="590" text-anchor="middle" fill="#93c5fd" font-size="25"
+        font-family="Noto Sans CJK SC,sans-serif">${persona.tag}</text>
+
+  <!-- 三轴图例 -->
+  <text x="540" y="652" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">H 高焦虑 / L 低焦虑  ·  F 充满 / R 随充  ·  G 家/固桩 / W 外充</text>
+
+  <!-- 轴 A：电量焦虑 -->
+  <text x="96" y="700" fill="#94a3b8" font-size="24" font-family="Noto Sans CJK SC,sans-serif">焦虑</text>
+  <rect x="200" y="683" width="400" height="22" rx="11" fill="#1c3355"/>
+  <rect x="200" y="683" width="${bar_anxiety}" height="22" rx="11" fill="url(#anxietygrad)"/>
+  <text x="618" y="700" fill="#e2e8f0" font-size="22" font-family="Noto Sans CJK SC,sans-serif">${anxiety}</text>
+  <text x="940" y="705" text-anchor="middle" fill="#ff6b35" font-size="38" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_anxiety}</text>
+
+  <!-- 轴 B：充满率 -->
+  <text x="96" y="754" fill="#94a3b8" font-size="24" font-family="Noto Sans CJK SC,sans-serif">充满</text>
+  <rect x="200" y="737" width="400" height="22" rx="11" fill="#1c3355"/>
+  <rect x="200" y="737" width="${bar_full}" height="22" rx="11" fill="#f5a623"/>
+  <text x="618" y="754" fill="#e2e8f0" font-size="22" font-family="Noto Sans CJK SC,sans-serif">${full_pct}%</text>
+  <text x="940" y="759" text-anchor="middle" fill="#f5a623" font-size="38" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_full}</text>
+
+  <!-- 轴 C：家/固桩占比 -->
+  <text x="96" y="808" fill="#94a3b8" font-size="24" font-family="Noto Sans CJK SC,sans-serif">家桩</text>
+  <rect x="200" y="791" width="400" height="22" rx="11" fill="#1c3355"/>
+  <rect x="200" y="791" width="${bar_home}" height="22" rx="11" fill="#4a9eff"/>
+  <text x="618" y="808" fill="#e2e8f0" font-size="22" font-family="Noto Sans CJK SC,sans-serif">${home_pct}%</text>
+  <text x="940" y="813" text-anchor="middle" fill="#4a9eff" font-size="38" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${axis_place}</text>
+
+  <!-- 数字看板：两行三列 -->
+  <line x1="120" y1="844" x2="960" y2="844" stroke="#1e3a5f" stroke-width="1.5"/>
+
+  <!-- 行 1 -->
+  <text x="200" y="885" text-anchor="middle" fill="#ffffff" font-size="54" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${charge_count}</text>
+  <text x="200" y="912" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">本期充电(次)</text>
+
+  <text x="540" y="885" text-anchor="middle" fill="#ffffff" font-size="54" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${total_kwh}</text>
+  <text x="540" y="912" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">总充入(kWh)</text>
+
+  <text x="880" y="885" text-anchor="middle" fill="#ffffff" font-size="54" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${avg_charge_min}</text>
+  <text x="880" y="912" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">均充时长(分)</text>
+
+  <!-- 行 2 -->
+  <text x="200" y="962" text-anchor="middle" fill="#f5a623" font-size="48" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${avg_start_soc}%</text>
+  <text x="200" y="988" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">平均起充</text>
+
+  <text x="540" y="962" text-anchor="middle" fill="#f5a623" font-size="48" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${avg_end_soc}%</text>
+  <text x="540" y="988" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">平均结束</text>
+
+  <text x="880" y="962" text-anchor="middle" fill="#4caf82" font-size="48" font-weight="bold"
+        font-family="Noto Sans CJK SC,sans-serif">${night_pct}%</text>
+  <text x="880" y="988" text-anchor="middle" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">夜充占比</text>
+
+  <!-- 底部信息条 + 水印 -->
+  <line x1="120" y1="1006" x2="960" y2="1006" stroke="#1e3a5f" stroke-width="1.5"/>
+  <text x="140" y="1048" fill="#94a3b8" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">${car_name} · ${window_label} · ${generated_at}</text>
+  <text x="940" y="1048" text-anchor="end" fill="#64748b" font-size="20"
+        font-family="Noto Sans CJK SC,sans-serif">${watermark}</text>
+</svg>

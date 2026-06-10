@@ -1,0 +1,158 @@
+# ============================================================================
+# efficiency-report fixtures —— CI（PlayRegistryTest.repoPlays_loadAndFixturesAllPass）
+#
+# 手工验算说明：
+#   actual_wh_km  = ROUND(raw_wh_per_km)
+#   raw_wh_per_km = total_kwh_charged * 1000 / total_km
+#   efficiency_ratio = LEAST(200, ROUND(actual_wh_km * 100 / baseline))
+#   delta_wh_km   = ROUND(actual_wh_km - baseline)
+#   delta_kwh_100 = ROUND(delta_wh_km * 100 / 1000, 2)
+#   delta_cost_100 = ROUND(delta_kwh_100 * 65 / 100, 2)
+#   period_delta  = ROUND(delta_cost_100 * total_km / 100, 1)
+#   bar_actual_px = LEAST(540, ROUND(efficiency_ratio * 540 / 200))
+#   bar_baseline_px = LEAST(540, ROUND(100 * 540 / 200)) = 270
+# ============================================================================
+
+fixtures:
+  # ── 典型省电通勤族 ──
+  # raw_wh_per_km = 53.76 * 1000 / 480 = 112.0
+  # actual_wh_km = 112, baseline = 140
+  # efficiency_ratio = ROUND(112 * 100 / 140) = ROUND(80.0) = 80 → grade A
+  # delta_wh_km = 112 - 140 = -28
+  # delta_kwh_100 = ROUND(-28 * 100 / 1000, 2) = -2.8
+  # delta_cost_100 = ROUND(-2.8 * 65 / 100, 2) = ROUND(-1.82) = -1.82
+  # period_delta = ROUND(-1.82 * 480 / 100, 1) = ROUND(-8.736, 1) = -8.7
+  # bar_actual_px = LEAST(540, ROUND(80 * 540 / 200)) = ROUND(216) = 216
+  - name: eco-commuter
+    window_days: 30
+    row:
+      drive_count: 52
+      total_km: 480.0
+      total_drive_min: 960
+      charge_sessions: 8
+      total_kwh_charged: 53.76
+      baseline_wh_per_km: 140.0
+      raw_wh_per_km: 112.0
+    expect:
+      actual_wh_km: 112
+      baseline: 140
+      delta_wh_km: -28
+      efficiency_ratio: 80
+      delta_kwh_per_100km: -2.8
+      delta_cost_per_100km: -1.82
+      period_delta_cost: -8.7
+      bar_actual_px: 216
+      bar_baseline_px: 270
+      grade_key: "A"
+      grade_info.title: "省电达人"
+      grade_info.color: "#4dd0e1"
+      grade_info.tag: "#能量回收选手"
+      summary: "近 30 天实际 112 Wh/km（基准 140 Wh/km），效率比 80%，每百公里 -1.82 元差价，本期合计 -8.7 元。"
+
+  # ── 重度耗电：空调战士 + 频繁急加速 ──
+  # raw_wh_per_km = 76.8 * 1000 / 320 = 240.0
+  # actual_wh_km = 240, baseline = 150
+  # efficiency_ratio = LEAST(200, ROUND(240 * 100 / 150)) = LEAST(200, 160) = 160 → grade F
+  # delta_wh_km = 240 - 150 = 90
+  # delta_kwh_100 = ROUND(90 * 100 / 1000, 2) = 9.0
+  # delta_cost_100 = ROUND(9.0 * 65 / 100, 2) = ROUND(5.85) = 5.85
+  # period_delta = ROUND(5.85 * 320 / 100, 1) = ROUND(18.72, 1) = 18.7
+  # bar_actual_px = LEAST(540, ROUND(160 * 540 / 200)) = LEAST(540, 432) = 432
+  - name: power-hungry-summer
+    window_days: 30
+    row:
+      drive_count: 28
+      total_km: 320.0
+      total_drive_min: 580
+      charge_sessions: 12
+      total_kwh_charged: 76.8
+      baseline_wh_per_km: 150.0
+      raw_wh_per_km: 240.0
+    expect:
+      actual_wh_km: 240
+      baseline: 150
+      delta_wh_km: 90
+      efficiency_ratio: 160
+      delta_kwh_per_100km: 9.0
+      delta_cost_per_100km: 5.85
+      period_delta_cost: 18.7
+      bar_actual_px: 432
+      bar_baseline_px: 270
+      grade_key: "F"
+      grade_info.title: "用电大户勋章"
+      grade_info.tag: "#国家电网VIP感谢函"
+      grade_info.color: "#b71c1c"
+
+  # ── 恰好对齐基准（B 档正常发挥）──
+  # raw_wh_per_km = 140 * 1000 / 1000 = 140
+  # efficiency_ratio = ROUND(140 * 100 / 140) = 100 → grade B
+  # delta_wh_km = 0; delta_cost = 0; period = 0
+  # bar_actual_px = ROUND(100 * 540 / 200) = 270 = bar_baseline_px
+  - name: baseline-aligned
+    window_days: 30
+    row:
+      drive_count: 40
+      total_km: 1000.0
+      total_drive_min: 1800
+      charge_sessions: 15
+      total_kwh_charged: 140.0
+      baseline_wh_per_km: 140.0
+      raw_wh_per_km: 140.0
+    expect:
+      actual_wh_km: 140
+      baseline: 140
+      delta_wh_km: 0
+      efficiency_ratio: 100
+      delta_kwh_per_100km: 0.0
+      delta_cost_per_100km: 0.0
+      period_delta_cost: 0.0
+      bar_actual_px: 270
+      bar_baseline_px: 270
+      grade_key: "B"
+      grade_info.title: "正常发挥"
+
+  # ── baseline=0/null fallback：cars.efficiency=0（TeslaMate 未回填）→ SQL fallback 152 Wh/km ──
+  # actual_wh_km = ROUND(105 * 1000 / 1000) = 105
+  # baseline_wh_per_km = 152（SQL COALESCE(NULLIF(0,0),0.152)*1000 → compute 取 ROUND(152)=152）
+  # efficiency_ratio = LEAST(200, ROUND(105 * 100 / 152)) = ROUND(69.07) = 69 → grade S
+  # delta_wh_km = 105 - 152 = -47
+  # delta_kwh_100 = ROUND(-47 * 100 / 1000, 2) = -4.7
+  # delta_cost_100 = ROUND(-4.7 * 65 / 100, 2) = -3.06 (rounded from -3.055)
+  # period_delta = ROUND(-3.06 * 1000 / 100, 1) = -30.6
+  # bar_actual_px = LEAST(540, ROUND(69 * 540 / 200)) = LEAST(540, 186) = 186
+  - name: baseline-null-fallback
+    window_days: 30
+    row:
+      drive_count: 20
+      total_km: 1000.0
+      total_drive_min: 1800
+      charge_sessions: 10
+      total_kwh_charged: 105.0
+      baseline_wh_per_km: 152.0
+      raw_wh_per_km: 105.0
+    expect:
+      actual_wh_km: 105
+      baseline: 152
+      delta_wh_km: -47
+      efficiency_ratio: 69
+      delta_kwh_per_100km: -4.7
+      delta_cost_per_100km: -3.05
+      period_delta_cost: -30.5
+      bar_actual_px: 186
+      bar_baseline_px: 270
+      grade_key: "S"
+      grade_info.title: "能效天花板"
+      summary: "近 30 天实际 105 Wh/km（基准 152 Wh/km），效率比 69%，每百公里 -3.05 元差价，本期合计 -30.5 元。"
+
+  # ── 数据不足（drive_count < min_sample 5）──
+  - name: new-car-few-drives
+    window_days: 30
+    row:
+      drive_count: 3
+      total_km: 42.0
+      total_drive_min: 80
+      charge_sessions: 1
+      total_kwh_charged: 5.46
+      baseline_wh_per_km: 140.0
+      raw_wh_per_km: 130.0
+    expect_unscored: true

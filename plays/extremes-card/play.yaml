@@ -1,0 +1,216 @@
+# ============================================================================
+# 本月之最 —— extremes-card 玩法
+#
+# 从当月行车数据提取五项极值：最远一程、最高瞬时速度、峰值功率、最高海拔、最久充电。
+# 每项极值配独立档位（speed_band/elev_band/charge_band）和自嘲文案，最终渲染
+# 1080×1080 深色分享卡，五条色彩条形图视觉呈现极值量级。
+# ============================================================================
+
+schema_version: 1
+
+name: extremes-card
+title: 本月之最
+emoji: "&#x26A1;"
+
+description: >-
+  本月之最卡片：统计窗口内最远单程（km）、最快瞬时速度（km/h）、峰值功率（kW）、
+  最高海拔（m）、最久充电（h）五项极值，配档位自嘲标签，渲染 1080×1080 极值分享卡。
+  用户问「本月最快/最远/最高/极值/我的记录」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+sql: |-
+  WITH d AS (
+    SELECT
+      id,
+      distance,
+      duration_min,
+      speed_max,
+      power_max,
+      start_position_id,
+      end_position_id
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND end_date IS NOT NULL
+      AND distance > 0
+  ),
+  pos_elev AS (
+    SELECT MAX(elevation) AS max_elevation
+    FROM positions
+    WHERE car_id = :car_id
+      AND date >= :start
+      AND date < :end
+      AND elevation IS NOT NULL
+  ),
+  cp AS (
+    SELECT MAX(duration_min) AS max_charge_min,
+           COUNT(*)          AS charge_count
+    FROM charging_processes
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND end_date IS NOT NULL
+  )
+  SELECT
+    (SELECT COUNT(*) FROM d)                            AS drive_count,
+    COALESCE((SELECT MAX(distance)   FROM d), 0)        AS longest_km,
+    COALESCE((SELECT MAX(speed_max)  FROM d), 0)        AS top_speed,
+    COALESCE((SELECT MAX(power_max)  FROM d), 0)        AS peak_power_kw,
+    COALESCE(pos_elev.max_elevation, 0)                 AS max_elevation_m,
+    COALESCE(cp.max_charge_min, 0)                      AS longest_charge_min,
+    COALESCE(cp.charge_count, 0)                        AS charge_count
+  FROM pos_elev, cp
+
+min_sample:
+  field: drive_count
+  min: 3
+
+compute:
+  # ---- 展示用格式化 ----
+  - var: longest_km_r
+    expr: "ROUND(longest_km, 1)"
+
+  - var: top_speed_r
+    expr: "ROUND(top_speed)"
+
+  - var: peak_power_r
+    expr: "ROUND(peak_power_kw)"
+
+  - var: max_elev_r
+    expr: "ROUND(max_elevation_m)"
+
+  # 最久充电转小时（1位小数）：ROUND(x/6)/10
+  - var: longest_charge_h
+    expr: "ROUND(longest_charge_min / 6) / 10"
+
+  # ---- 档位判定 ----
+  - var: speed_band
+    level:
+      input: top_speed
+      thresholds:
+        - { lt: 120, label: s1 }
+        - { lt: 150, label: s2 }
+        - { lt: 180, label: s3 }
+        - { label: s4 }
+
+  - var: elev_band
+    level:
+      input: max_elevation_m
+      thresholds:
+        - { lt: 200,  label: e1 }
+        - { lt: 800,  label: e2 }
+        - { lt: 2000, label: e3 }
+        - { label: e4 }
+
+  - var: charge_band
+    level:
+      input: longest_charge_min
+      thresholds:
+        - { lt: 30,  label: c1 }
+        - { lt: 60,  label: c2 }
+        - { lt: 120, label: c3 }
+        - { label: c4 }
+
+  - var: speed_label
+    lookup:
+      key: speed_band
+      table: speed_labels
+      default: { text: "就这速度", tag: "#限速内的平静" }
+
+  - var: elev_label
+    lookup:
+      key: elev_band
+      table: elev_labels
+      default: { text: "平原人", tag: "#导航不知道有山" }
+
+  - var: charge_label
+    lookup:
+      key: charge_band
+      table: charge_labels
+      default: { text: "充电自由", tag: "#时间不值钱" }
+
+  # ---- SVG 条形宽度（轨道 480px）----
+  # 参照满分：速度 200km/h；海拔 3000m；充电 180min；功率 300kW；距离 600km
+  - var: bar_speed
+    expr: "LEAST(480, ROUND(top_speed * 480 / 200))"
+
+  - var: bar_elev
+    expr: "LEAST(480, ROUND(max_elevation_m * 480 / 3000))"
+
+  - var: bar_charge
+    expr: "LEAST(480, ROUND(longest_charge_min * 480 / 180))"
+
+  - var: bar_power
+    expr: "LEAST(480, ROUND(peak_power_kw * 480 / 300))"
+
+  - var: bar_dist
+    expr: "LEAST(480, ROUND(longest_km * 480 / 600))"
+
+  - var: summary
+    template: "本月之最：最远 ${longest_km_r}km · 最快 ${top_speed_r}km/h · 峰值功率 ${peak_power_r}kW · 最高 ${max_elev_r}m · 最久充电 ${longest_charge_h}h"
+
+# ---- 档位文案表 ----
+tables:
+  speed_labels:
+    s1:
+      text: "法规内的良民"
+      tag: "#测速摄像头的好朋友"
+    s2:
+      text: "高速巡航达人"
+      tag: "#导航ETA比你预估的准"
+    s3:
+      text: "性能解锁中"
+      tag: "#左道精神股东"
+    s4:
+      text: "这不是在开车"
+      tag: "#赛道日常通勤"
+
+  elev_labels:
+    e1:
+      text: "平地本地人"
+      tag: "#从没见过山的车"
+    e2:
+      text: "丘陵探索家"
+      tag: "#续航扣了但风景赚了"
+    e3:
+      text: "山地穿越者"
+      tag: "#山路充电桩在哪"
+    e4:
+      text: "高原电量焦虑症患者"
+      tag: "#表显-40%其实没事"
+
+  charge_labels:
+    c1:
+      text: "超充飞侠"
+      tag: "#充电比泡面还快"
+    c2:
+      text: "合理补给选手"
+      tag: "#充电追剧双线进行"
+    c3:
+      text: "充电图书馆常客"
+      tag: "#快充桩前睡着过"
+    c4:
+      text: "充电界冥想大师"
+      tag: "#两小时我能想清楚人生"
+
+output:
+  fields:
+    - { name: longest_km,        from: longest_km_r,      type: number }
+    - { name: top_speed,         from: top_speed_r,        type: number }
+    - { name: peak_power_kw,     from: peak_power_r,       type: number }
+    - { name: max_elevation_m,   from: max_elev_r,         type: number }
+    - { name: longest_charge_h,  from: longest_charge_h,   type: number }
+    - { name: charge_count,      from: charge_count,       type: number }
+    - { name: drive_count,       from: drive_count,        type: number }
+    - { name: speed_label,       from: speed_label,        type: object }
+    - { name: elev_label,        from: elev_label,         type: object }
+    - { name: charge_label,      from: charge_label,       type: object }
+    - { name: summary,           from: summary,            type: string }
+
+card:
+  template: card.svg.tmpl

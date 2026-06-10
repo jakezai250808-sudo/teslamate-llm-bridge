@@ -1,0 +1,97 @@
+# ============================================================================
+# extremes-card fixtures —— CI（PlayRegistryTest.repoPlays_loadAndFixturesAllPass）
+# 用 mock SQL 行验证 compute 流水线可执行 + 极值格式化/档位判定/查表/摘要全对。
+# ============================================================================
+
+fixtures:
+  # 典型城市车主：偶尔跑高速，本月去了趟黄山 (863m)，充电未超 1h
+  # speed_band: ROUND(138)=138 → 120≤x<150 → s2
+  # elev_band:  863 → 800≤x<2000 → e3
+  # charge_band: 47 → 30≤x<60 → c2
+  # longest_charge_h: ROUND(47/6)/10 = ROUND(7.833)/10 = 8/10 = 0.8
+  # bar_speed: ROUND(138*480/200)=ROUND(331.2)=331
+  # bar_elev:  ROUND(863*480/3000)=ROUND(138.08)=138
+  # bar_charge: ROUND(47*480/180)=ROUND(125.33)=125
+  # bar_power: ROUND(195*480/300)=ROUND(312)=312
+  # bar_dist:  ROUND(142.6*480/600)=ROUND(114.08)=114
+  - name: typical-urban
+    window_days: 30
+    row:
+      drive_count: 28
+      longest_km: 142.6
+      top_speed: 138.0
+      peak_power_kw: 195.0
+      max_elevation_m: 863.0
+      longest_charge_min: 47.0
+      charge_count: 9
+    expect:
+      longest_km_r: 142.6
+      top_speed_r: 138
+      peak_power_r: 195
+      max_elev_r: 863
+      longest_charge_h: 0.8
+      speed_band: s2
+      elev_band: e3
+      charge_band: c2
+      bar_speed: 331
+      bar_elev: 138
+      bar_charge: 125
+      bar_power: 312
+      bar_dist: 114
+      speed_label.tag: "#导航ETA比你预估的准"
+      elev_label.tag: "#山路充电桩在哪"
+      charge_label.tag: "#充电追剧双线进行"
+      summary: "本月之最：最远 142.6km · 最快 138km/h · 峰值功率 195kW · 最高 863m · 最久充电 0.8h"
+
+  # 极端场景：西藏自驾 + 高速 (测试 LEAST 封顶 + s4 + e4 + c3 档)
+  # speed_band: 192 → ≥180 → s4
+  # elev_band:  4278 → ≥2000 → e4
+  # charge_band: 148 → 120≤x<... → c3  (148 < 120? No. 148≥120 → c3? design says c3=60≤<120 c4=≥120)
+  # 重新核对: c3: lt:120 → 148>=120 → c4
+  # charge_band: 148 → ≥120 → c4
+  # longest_charge_h: ROUND(148/6)/10 = ROUND(24.667)/10 = 25/10 = 2.5
+  # bar_speed: ROUND(192*480/200)=ROUND(460.8)=461 (< 480, 不封顶)
+  # bar_elev: ROUND(4278*480/3000)=ROUND(684.48)=684 → LEAST(480,684)=480
+  # bar_charge: ROUND(148*480/180)=ROUND(394.67)=395
+  # bar_power: ROUND(287*480/300)=ROUND(459.2)=459
+  # bar_dist: ROUND(583.4*480/600)=ROUND(466.72)=467
+  - name: extreme-tibet-run
+    window_days: 30
+    row:
+      drive_count: 12
+      longest_km: 583.4
+      top_speed: 192.0
+      peak_power_kw: 287.0
+      max_elevation_m: 4278.0
+      longest_charge_min: 148.0
+      charge_count: 22
+    expect:
+      longest_km_r: 583.4
+      top_speed_r: 192
+      peak_power_r: 287
+      max_elev_r: 4278
+      longest_charge_h: 2.5
+      speed_band: s4
+      elev_band: e4
+      charge_band: c4
+      bar_speed: 461
+      bar_elev: 480
+      bar_charge: 395
+      bar_power: 459
+      bar_dist: 467
+      speed_label.tag: "#赛道日常通勤"
+      elev_label.tag: "#表显-40%其实没事"
+      charge_label.tag: "#两小时我能想清楚人生"
+
+  # 数据不足：drive_count=2 < min_sample=3 → unscored（灰色兜底）
+  - name: insufficient-drives
+    window_days: 30
+    row:
+      drive_count: 2
+      longest_km: 18.0
+      top_speed: 72.0
+      peak_power_kw: 85.0
+      max_elevation_m: 45.0
+      longest_charge_min: 12.0
+      charge_count: 1
+    expect_unscored: true
