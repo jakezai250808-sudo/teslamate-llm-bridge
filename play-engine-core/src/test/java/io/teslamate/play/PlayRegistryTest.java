@@ -545,8 +545,8 @@ class PlayRegistryTest {
   }
 
   private static Path repoTemplateDir() {
-    // play-engine-core 模块测试 cwd = play-engine-core → 向上两级到 repo 根
-    Path p = Path.of("..", "..", "plays", "_template").toAbsolutePath().normalize();
+    // play-engine-core 模块测试 cwd = play-engine-core → 向上一级到 repo 根
+    Path p = Path.of("..", "plays", "_template").toAbsolutePath().normalize();
     assertThat(Files.isDirectory(p)).as("plays/_template 必须存在于 repo 根").isTrue();
     return p;
   }
