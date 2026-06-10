@@ -66,7 +66,6 @@ class PlayRegistryTest {
     assertThat(def.defaultDays()).isEqualTo(30);
     assertThat(def.minSampleMin()).isEqualTo(50);
     assertThat(def.contentSha256()).hasSize(64);
-    assertThat(def.hasCard()).isFalse();
     // bridge 模式：requiredScopes 应为空集（scopeExtractor = sql -> Set.of()）
     assertThat(def.requiredScopes()).isEmpty();
   }
@@ -286,107 +285,6 @@ class PlayRegistryTest {
     assertThat(registry().find("no-default")).isEmpty();
   }
 
-  // ====== card 模板 lint ======
-
-  private void writeCardPlay(String name, String svg) throws IOException {
-    String yaml = VALID_YAML.formatted(name) + "card:\n  template: card.svg.tmpl\n";
-    writePlay(name, yaml);
-    Files.writeString(tmp.resolve(name).resolve("card.svg.tmpl"), svg);
-  }
-
-  @Test
-  void cardTemplate_withScript_rejected() throws IOException {
-    writeCardPlay(
-        "evil-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script>"
-            + "<text>${score}</text></svg>");
-    assertThat(registry().find("evil-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_withUnknownPlaceholder_rejected() throws IOException {
-    writeCardPlay(
-        "bad-var-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>${not_a_var}</text></svg>");
-    assertThat(registry().find("bad-var-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_validPlaceholders_loads() throws IOException {
-    writeCardPlay(
-        "good-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\">"
-            + "<text>${score}</text><text>${car_name} ${window_label}</text></svg>");
-    PlayDefinition def = registry().find("good-card").orElseThrow();
-    assertThat(def.hasCard()).isTrue();
-  }
-
-  @Test
-  void cardDeclaredButFileMissing_rejected() throws IOException {
-    writePlay(
-        "missing-card",
-        VALID_YAML.formatted("missing-card") + "card:\n  template: card.svg.tmpl\n");
-    assertThat(registry().find("missing-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_hrefWithWhitespaceBypass_rejected() throws IOException {
-    writeCardPlay(
-        "ssrf-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\">"
-            + "<image href = \"https://100.100.100.200/latest/meta-data/\"/>"
-            + "<text>${score}</text></svg>");
-    assertThat(registry().find("ssrf-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_fileSchemeHref_rejected() throws IOException {
-    writeCardPlay(
-        "lfi-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\">"
-            + "<image href=\"file:///opt/teslaproxy-gateway/.env\"/>"
-            + "<text>${score}</text></svg>");
-    assertThat(registry().find("lfi-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_externalUrlRef_rejected() throws IOException {
-    writeCardPlay(
-        "css-url-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\">"
-            + "<rect fill=\"url(https://evil.example/x.svg)\" width=\"10\" height=\"10\"/>"
-            + "<text>${score}</text></svg>");
-    assertThat(registry().find("css-url-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_localFragmentRefs_accepted() throws IOException {
-    writeCardPlay(
-        "fragment-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\">"
-            + "<defs><linearGradient id=\"bg\"/><circle id=\"dot\" r=\"2\"/></defs>"
-            + "<rect fill=\"url(#bg)\" width=\"10\" height=\"10\"/>"
-            + "<use href=\"#dot\"/>"
-            + "<text>${score}</text></svg>");
-    assertThat(registry().find("fragment-card")).isPresent();
-  }
-
-  @Test
-  void cardTemplate_nonBmpEmoji_rejected() throws IOException {
-    writeCardPlay(
-        "emoji-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>🦉 ${score}</text></svg>");
-    assertThat(registry().find("emoji-card")).isEmpty();
-  }
-
-  @Test
-  void cardTemplate_notWellFormedXml_rejected() throws IOException {
-    writeCardPlay(
-        "broken-xml-card",
-        "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>${score}</svg>");
-    assertThat(registry().find("broken-xml-card")).isEmpty();
-  }
-
   // ====== compute template 步骤 lint ======
 
   @Test
@@ -431,10 +329,8 @@ class PlayRegistryTest {
   void templateDir_playYamlAndFixturesAreConsistent() throws IOException {
     Path repoTemplate = repoTemplateDir();
     byte[] yaml = Files.readAllBytes(repoTemplate.resolve("play.yaml"));
-    byte[] card = Files.readAllBytes(repoTemplate.resolve("card.svg.tmpl"));
     String manifestName = "night-owl-example";
-    PlayDefinition def = PlayLoader.load(manifestName, yaml, card);
-    assertThat(def.hasCard()).isTrue();
+    PlayDefinition def = PlayLoader.load(manifestName, yaml);
 
     Map<String, Object> fixtures = loadYaml(repoTemplate.resolve("fixtures.yaml"));
     @SuppressWarnings("unchecked")
@@ -466,9 +362,7 @@ class PlayRegistryTest {
     for (Path dir : playDirs) {
       String name = dir.getFileName().toString();
       byte[] yaml = Files.readAllBytes(dir.resolve("play.yaml"));
-      Path cardPath = dir.resolve("card.svg.tmpl");
-      byte[] card = Files.isRegularFile(cardPath) ? Files.readAllBytes(cardPath) : null;
-      PlayDefinition def = PlayLoader.load(name, yaml, card);
+      PlayDefinition def = PlayLoader.load(name, yaml);
 
       Path fx = dir.resolve("fixtures.yaml");
       assertThat(Files.isRegularFile(fx)).as("play '%s' 缺 fixtures.yaml", name).isTrue();
@@ -486,8 +380,7 @@ class PlayRegistryTest {
   void drivingPersonality_personaTableCoversAll16Codes() throws IOException {
     Path dir = repoTemplateDir().getParent().resolve("driving-personality");
     byte[] yaml = Files.readAllBytes(dir.resolve("play.yaml"));
-    byte[] card = Files.readAllBytes(dir.resolve("card.svg.tmpl"));
-    PlayDefinition def = PlayLoader.load("driving-personality", yaml, card);
+    PlayDefinition def = PlayLoader.load("driving-personality", yaml);
 
     Map<String, Map<String, String>> personas = def.tables().get("personas");
     assertThat(personas).isNotNull();

@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.ResultSetExtractor;
@@ -122,7 +123,7 @@ class PlayEngineTest {
       """;
 
   private static PlayDefinition pipelinePlay() {
-    return PlayLoader.load("pipe-play", PIPELINE_YAML.getBytes(StandardCharsets.UTF_8), null);
+    return PlayLoader.load("pipe-play", PIPELINE_YAML.getBytes(StandardCharsets.UTF_8), sql -> Set.of());
   }
 
   @Test
