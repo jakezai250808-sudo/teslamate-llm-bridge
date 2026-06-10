@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      play-engine-core：玩法引擎纯核心子模块。
+      groupId io.teslamate.play —— 中立命名，与 SaaS (com.teslaproxy) / bridge (io.teslabridge)
+      两侧包名均不同，未来 subtree push 到 bridge 后 bridge 直接 import 本模块。
+
+      parent 继承 spring-boot-starter-parent：复用 BOM 管理所有依赖版本，
+      与主模块 (teslaproxy-gateway) 保持完全一致，避免版本漂移。
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.teslamate.play</groupId>
+    <artifactId>play-engine-core</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>play-engine-core</name>
+    <description>
+        TeslaMate 玩法引擎核心模块 —— 声明式 play.yaml 加载、SQL guard、compute 流水线、
+        SVG 卡片渲染器。SaaS 专属逻辑（OAuth scope 校验、audit logging、car whitelist）
+        通过三个接口隔离，由上层模块注入实现。
+    </description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <!-- Spring Boot Web starter（@Component、@Value、Resource 等） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring JDBC（PlayEngine 用 JdbcTemplate / NamedParameterJdbcTemplate / TransactionTemplate） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!-- SnakeYAML（PlayLoader 解析 play.yaml） -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+
+        <!-- Apache Batik：SVG → PNG 转码（PlayCardRenderer） -->
+        <dependency>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-transcoder</artifactId>
+            <version>1.17</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>xml-apis</groupId>
+                    <artifactId>xml-apis</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-codec</artifactId>
+            <version>1.17</version>
+        </dependency>
+
+        <!-- 测试 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Spotless：与主模块保持相同的 Google Java Format 风格 -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.43.0</version>
+                <configuration>
+                    <java>
+                        <googleJavaFormat>
+                            <version>1.22.0</version>
+                            <style>GOOGLE</style>
+                        </googleJavaFormat>
+                        <licenseHeader>
+                            <content>/* (C) TeslaMate play-engine-core */</content>
+                        </licenseHeader>
+                        <removeUnusedImports/>
+                        <trimTrailingWhitespace/>
+                        <endWithNewline/>
+                    </java>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
