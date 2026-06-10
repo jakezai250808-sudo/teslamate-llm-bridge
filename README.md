@@ -170,7 +170,7 @@ The bridge starts on port **8770**. Startup takes ~10–30 seconds on first buil
 Bridge 监听端口 **8770**。首次构建约 10–30 秒（Maven 下载），有缓存约 5 秒。
 
 ```bash
-curl http://localhost:8080/actuator/health
+curl http://localhost:8770/actuator/health
 # {"status":"UP"}
 ```
 
