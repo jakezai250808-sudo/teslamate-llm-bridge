@@ -1,9 +1,11 @@
 services:
-  # ── default profile (production / self-hosted) ─────────────────────────────
+  # ── production profile ──────────────────────────────────────────────────────
   # Requires a running TeslaMate PostgreSQL instance.
   # Configure TM_DB_* in .env (copy from .env.example).
+  # Start with: docker compose --profile prod up -d
   bridge:
     build: .
+    profiles: [prod]
     ports:
       - "8770:8770"
     environment:

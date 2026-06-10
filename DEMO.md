@@ -89,13 +89,13 @@ The `--demo` flag starts the demo profile, waits for health, runs `driving-perso
 
 | Play | Key metrics | Expected result |
 |---|---|---|
-| driving-personality | sample_points≥200, night~20%, punch~22%, avg_km~21, freq~82% | Persona code **FNLE** |
-| ab-couple-souls | total=78, a≥38, b=36 | Balanced split, median speed ~85 km/h |
-| charging-habit | charge=14, full_pct=42%, home_pct=64%, anxiety=86 | Persona **HFG** — 续航焦虑症晚期 |
-| efficiency-report | 30d ~243 kWh / ~1222 km, baseline 160 Wh/km | efficiency_ratio ~124% → **Grade D** |
-| extremes-card | top_speed=142, peak_power=180, max_elevation=312 m | s3/e2 tier |
-| monthly-wrapped | drives~54, busiest=05-17 (67 km), fav_hour=8 | b4 远行达人 |
-| weekend-warrior | total=78, wknd≈28, wkday≈50 | commuter profile |
+| driving-personality | drives=52, night~17%, punch~27%, avg_km~23.5, freq~83% | Persona code **FNLE** (午夜高速战神) |
+| ab-couple-souls | total=52, a=26, b=26, median_speed=86 km/h | Balanced split; A 均衡通勤手 vs B 节奏感玩家 |
+| charging-habit | charge=10, full_pct=50%, home_pct=100%, anxiety=87 | Persona **HFG** — 续航焦虑症晚期 |
+| efficiency-report | 30d ~243 kWh / ~1222 km, baseline 160 Wh/km | efficiency_ratio ~124% → **Grade D** (重度耗电体) |
+| extremes-card | top_speed=142, peak_power=180 kW, max_elevation=310 m | 高速巡航达人 / 丘陵探索家 |
+| monthly-wrapped | drives=52, total=1222 km, busiest=05-25 (200 km), fav_hour=8 | 城际穿梭常旅客 |
+| weekend-warrior | wknd=11 trips (364 km), wkday=41 trips (858 km) | warrior_score=26 → 周末偶尔出逃者 |
 
 ### v2 data refinements (vs. original draft)
 

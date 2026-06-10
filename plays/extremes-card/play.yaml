@@ -10,7 +10,7 @@ schema_version: 1
 
 name: extremes-card
 title: 本月之最
-emoji: "&#x26A1;"
+emoji: "⚡"
 
 description: >-
   本月之最卡片：统计窗口内最远单程（km）、最快瞬时速度（km/h）、峰值功率（kW）、

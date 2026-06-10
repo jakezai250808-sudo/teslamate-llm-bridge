@@ -7,7 +7,7 @@
 
 ```bash
 # One-line quick start (after filling .env with your TeslaMate DB creds):
-docker compose up -d
+docker compose --profile prod up -d
 # Then: curl http://localhost:8770/api/v1/cars/1/play/driving-personality
 ```
 
@@ -103,7 +103,7 @@ API_TOKEN=
 ### 3. Start the bridge
 
 ```bash
-docker compose up -d
+docker compose --profile prod up -d
 ```
 
 The bridge starts on port **8770** and loads the built-in play at startup. Startup takes ~5 seconds (Spring Boot + Batik font scan).
@@ -181,7 +181,7 @@ The engine renders a 1080×1080 PNG with your persona and stats. CJK fonts are b
 
 > **Security:** Before exposing the bridge to the internet, set `API_TOKEN` in your `.env` file
 > and optionally restrict access to specific car IDs with `CAR_IDS`.
-> Run: `echo "API_TOKEN=$(openssl rand -hex 32)" >> .env` then apply it with `docker compose up -d --force-recreate bridge` (**not** `restart` — `restart` does not re-read `.env`).
+> Run: `echo "API_TOKEN=$(openssl rand -hex 32)" >> .env` then apply it with `docker compose --profile prod up -d --force-recreate bridge` (**not** `restart` — `restart` does not re-read `.env`).
 > Without `API_TOKEN`, any internet user with the URL can read your complete TeslaMate history.
 
 - **ChatGPT Actions** — import `http://localhost:8770/openapi.json` (needs public HTTPS URL): [docs/connect-chatgpt.md](docs/connect-chatgpt.md)

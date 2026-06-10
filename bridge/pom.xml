@@ -71,6 +71,12 @@
             <version>1.18</version>
         </dependency>
 
+        <!-- Actuator: /actuator/health endpoint referenced in README quick-start -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

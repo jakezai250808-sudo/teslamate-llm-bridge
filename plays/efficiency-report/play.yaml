@@ -34,7 +34,7 @@ sql: |-
   WITH d AS (
     SELECT
       COUNT(*)                   AS drive_count,
-      COALESCE(SUM(distance), 0) AS total_km,
+      ROUND(COALESCE(SUM(distance), 0)::numeric, 1) AS total_km,
       COALESCE(SUM(duration_min), 0) AS total_drive_min
     FROM drives
     WHERE car_id = :car_id
