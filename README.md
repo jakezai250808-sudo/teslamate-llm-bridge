@@ -86,6 +86,11 @@ curl "http://localhost:8770/api/v1/cars/99/play/monthly-wrapped"
 
 ## Quick Start
 
+**Full installation guides (commands are tested, not examples):**
+
+- **[Install from scratch](docs/install-from-zero.md)** — no TeslaMate yet; covers TeslaMate + bridge in one go, demo mode, CN mirror acceleration
+- **[Add bridge to existing TeslaMate](docs/install-existing-teslamate.md)** — already running TeslaMate; covers TM_DB_HOST gotcha for containerized PG, prebuilt-jar option, security
+
 ### Prerequisites
 
 - Docker and Docker Compose
