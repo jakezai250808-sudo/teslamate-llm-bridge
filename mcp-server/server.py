@@ -354,7 +354,11 @@ def main() -> None:
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "http":
         port = int(os.environ.get("MCP_PORT", "8771"))
-        mcp.run(transport="streamable-http", host="127.0.0.1", port=port)
+        host = os.environ.get("MCP_HOST", "127.0.0.1")
+        # FastMCP stores host/port in settings; set before run
+        mcp.settings.host = host
+        mcp.settings.port = port
+        mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")
 

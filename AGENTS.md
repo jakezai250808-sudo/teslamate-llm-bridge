@@ -486,3 +486,5 @@ Agent 会自动调 `runPlay` 拿数据 → 填 creative-prompt v1 模板 → 触
 | `driving-personality-fnle.png` | 人格卡 FNLE「午夜高速战神」 | 路径 A（Seedream 4.0） |
 
 完整生图路径说明：[`docs/image-generation.md`](docs/image-generation.md)
+
+在 Codex CLI 里接入 MCP（含 `user cancelled` / seatbelt 封网排障）：[`docs/connect-codex.md`](docs/connect-codex.md)
