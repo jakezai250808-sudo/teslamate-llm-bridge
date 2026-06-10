@@ -383,73 +383,79 @@ Agent：[自动串联上面 5 步] → 返回竖版海报图片
 
 ### 路径 B — 浏览器驱动（ChatGPT 网页 / 豆包网页）
 
-**适用：** 你有 ChatGPT / 豆包已登录浏览器，Agent 用自己的 Chrome MCP 帮你操作网页生图。
+**适用：** 你有 ChatGPT / 豆包已登录浏览器，Agent 用自己的浏览器自动化 MCP 帮你操作网页生图。
+
+> **路径 B 需要「能模拟真实键盘输入」的浏览器自动化 MCP（如 Claude-in-Chrome、Playwright MCP），不能用只会注入 JS 的工具——ChatGPT 的输入框拒绝合成事件注入，实测证伪（见下方说明框）。**
 
 > **前置说明：** 登录态由用户保证（本项目不负责登录）。
+
+---
+
+> **⚠ 为什么不能用纯 JS 注入（三条实测证伪）**
+>
+> 1. **发送按钮不渲染**：用 `nativeInputValueSetter + dispatchEvent('input')` 或 `execCommand('insertText')` 把文字写进输入框——字是进去了，但 ChatGPT 底层 React 监听的是 trusted 事件，合成事件不触发状态更新，**发送按钮始终不出现**，无法发出请求。
+> 2. **Control Chrome 的 `execute_javascript` 不 await Promise**：异步 API（如 `navigator.clipboard.writeText()`）返回的 Promise 在工具层面无法等待，异步取值拿到的是 `undefined` 而非实际结果。
+> 3. **ChatGPT 发送依赖 trusted user gesture**：浏览器安全模型将脚本注入的事件标记为 `isTrusted=false`，部分关键操作（发送、文件上传）只响应真实用户操作，合成点击无效。
+
+---
 
 **Agent 执行步骤清单（以 ChatGPT 为例，豆包同理）：**
 
 ```
-1. run_play + get_creative_prompt → 拿到 JSON 数据 + prompt 模板
+步骤 1 — 准备数据与 prompt
+   · run_play(play_name="driving-personality", car_id=<实际 car_id>)
+   · get_creative_prompt(play_name="driving-personality")
+   · 用步骤 2 数据填充 v1 模板（ChatGPT 用 v1；豆包用 v2 Seedream 专用版）
+   · 得到完整 prompt 字符串，备用
 
-2. 填充占位符 → 得到完整 prompt 字符串
-   · ChatGPT 用 v1 模板（通用版，GPT Image 不需要 Seedream 白名单约束）
-   · 豆包 / 即梦用 v2 模板（Seedream 专用）
+步骤 2 — 连接浏览器自动化 MCP，取/建隔离 tab
+   · 确认 Claude-in-Chrome（或 Playwright MCP）已连接：
+     list_connected_browsers / 同等指令
+   · 取一个隔离的自动化 tab，不抢用户正在用的 tab：
+     tabs_context_mcp(createIfEmpty=true)
+     （此调用新建独立 tab，用户原 active tab 保持不变）
+   · 失败分支：MCP 未连接 → 告知用户「请先安装并连接 Claude-in-Chrome 浏览器扩展，连接后回复我」
 
-3. 用 Chrome MCP 在后台打开新标签，不要切走用户 active tab：
-   · execute_javascript 检查是否已有 chatgpt.com tab：
-     const tabs = [...document.querySelectorAll('...')]  ← 用 Chrome MCP list_tabs 代替
-   · 若无 chatgpt.com tab，通过 osascript 后台建新 tab（不抢 active）：
-     tell application "Google Chrome"
-       make new tab at end of tabs of window 1 with properties {URL:"https://chatgpt.com"}
-     end tell
-   · 失败分支：如果 Chrome 未运行，告知用户手动打开 chatgpt.com 再说「好了」
+步骤 3 — 导航到 ChatGPT，截图确认已登录
+   · navigate(url="https://chatgpt.com/")
+   · screenshot → 视觉确认：页面有 composer 输入框（「有问题，尽管问」或「生成图片」按钮可见）
+   · 未登录（看到登录页）→ 告知用户「请先在浏览器里登录 ChatGPT，登录完成后回复我」，
+     等用户回复后从本步骤重试，不要自动轮询
 
-4. 验证已登录（在目标 tab 上跑 JS，不需要 tab active）：
-   · execute_javascript（对目标 tab）:
-     document.querySelector('button[data-testid="profile-button"]') !== null
-   · true = 已登录；false = 未登录 → 告知用户「请先在 chatgpt.com 登录，登录完成后回复我」，
-     等用户回复再继续，不要自动轮询登录状态（无法可靠检测）
+步骤 4 — 真实键入 prompt 并发送（关键：必须用真实键盘输入）
+   · left_click 点击 composer 输入框（视觉定位，无需写死 selector）
+   · type(text="<步骤1得到的完整 prompt>")
+     ↑ 这是真实 OS 键盘输入，React 能感知，发送按钮随之渲染出来
+   · key("Return") 发送
+   · 失败分支：发送后截图未见新消息出现 → 重试一次；
+     输入框找不到 → screenshot 重新视觉定位后再点击
 
-5. 向对话框注入完整 prompt：
-   · 通过剪贴板方式注入（ChatGPT 输入框是 contenteditable，无法 querySelector+value 直接赋值）：
-     ① 用 execute_javascript 把 prompt 写入剪贴板：
-        navigator.clipboard.writeText(`${FILLED_PROMPT}`)
-        // 若 clipboard API 被 CSP 拦，改用剪贴板 mcp 工具写入
-     ② 再 execute_javascript 触发 focus + paste：
-        const el = document.querySelector('div#prompt-textarea, div[contenteditable="true"]')
-        el.focus()
-        document.execCommand('insertText', false, `${FILLED_PROMPT}`)
-   · 触发发送：
-        document.querySelector('button[data-testid="send-button"]')?.click()
-   · 失败分支：如果发送按钮找不到，说明 ChatGPT DOM 结构已变化，
-     告知用户「请手动粘贴以下 prompt 并发送」，并把完整 prompt 作为文本返回
+步骤 5 — 等待生图完成（超时上限 120 秒）
+   · 每 ~30 秒 screenshot 一次（GPT Image 生图慢，不要频繁截图）
+   · 注意：图渲染在对话下方，**首屏可能看不到**，需要 scroll down 才能看到
+     「正在润饰细节」占位图 → 最终完整图
+   · 120 秒超时 → 告知用户「生图可能需要更长时间，请在浏览器里等待完成后回复我」
+   · ChatGPT 弹出每日限额提示 → 告知用户并结束，建议切路径 A（火山方舟）
 
-6. 等待生图完成（超时上限 90 秒）：
-   · 每 3 秒轮询一次（不要更频繁）：
-     document.querySelector('img[src*="oaidalleapiprodscus"], img[src*="production-files"]') !== null
-   · 90 秒超时 → 告知用户「生图可能需要更长时间，请在浏览器里等待完成后告诉我」
+步骤 6 — 取图存盘（两种方式，按工具能力选）
+   方式 a（截图法，最稳）：
+     · scroll 把图卡滚进视野
+     · screenshot(save_to_disk=true) 或 zoom 截取该区域
+     · 屏幕分辨率足够用于社交分享
+   方式 b（原图法，质量更高，但有限制）：
+     · 图片 src 是 chatgpt.com/backend-api/estuary/content?...&sig=...
+       需要 ChatGPT 会话 cookie，curl 直取会返回 JSON 错误
+     · 只能在页内用 fetch(src)→blob→base64 取，
+       但 1024×1536 PNG 的 base64 约 3 MB，**禁止整段拉进 agent 上下文**（会爆 token）
+       → 必须落盘（写文件）或分块处理
+   失败分支：页内 fetch 被 CORS 拦 → 退回方式 a 截图法
 
-7. 取图 URL（execute_javascript，在目标 tab 上）：
-   · const img = document.querySelector('img[src*="oaidalleapiprodscus"], img[src*="production-files"]')
-     img ? img.src : null
-   · 拿到 URL 后用 fetch + blob 下载到本地（在 JS 环境里或用 curl/wget）：
-     失败分支：如果 URL 是临时 signed URL，下载要在 60 秒内完成；
-     若 fetch 被 CORS 拦，则只返回图片 URL，告知用户右键保存
-
-8. 返回本地图片路径（或临时 URL）给用户
+步骤 7 — 返回本地图片路径给用户
+   · 附上生图所用的 play_name 和 prompt 版本，方便复现
 ```
 
-**注意事项：**
-- 绝对不能切走用户当前 active tab（见项目 CLAUDE.md 浏览器自动化规则）
-- 用 `make new tab at end of tabs` 创建新标签，不要 activate 窗口
-- 生图过程中不要轮询太频繁（每 3 秒检查一次即可）
-- 如果 ChatGPT 弹出「您已达到当日生图限制」，告知用户并结束
-- ChatGPT DOM 选择器（`#prompt-textarea` 等）会随版本变化；优先用 `[data-testid]` 属性，
-  比 class 名稳定；如果全部失败，fallback 到提示用户手动粘贴 prompt
-
-**豆包网页同理：** 打开 https://www.doubao.com，找生图 bot（如「豆包·图像生成」），步骤与上方相同。
-豆包图片 URL 特征：`src*="lf-bot-studio-plugin-resource"` 或 `src*="p3-bot-sign"`。
+**豆包网页同理：** 导航到 https://www.doubao.com，找生图 bot（如「豆包·图像生成」）。
+composer 位置不同但同样需要真实 `type` 键入，`key Return` 发送；底座是 Seedream，prompt 选 v2 模板。
 
 ---
 
