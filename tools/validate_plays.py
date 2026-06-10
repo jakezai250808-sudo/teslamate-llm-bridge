@@ -14,13 +14,13 @@ play passing here also loads and computes identically in production:
   3. compute checks         — step shape, expr compilation, level catch-all,
                               lookup table + required default, no card-only
                               built-ins in compute templates
-  4. card template lint     — forbidden content, well-formed XML, href/src and
-                              url() refs local-#-only, no non-BMP code points,
-                              every ${var} resolves
-  5. fixture execution      — each fixture row runs through min_sample + the
+  4. fixture execution      — each fixture row runs through min_sample + the
                               full compute pipeline; ``expect`` values asserted
                               (numbers within ±0.001), ``expect_unscored`` cases
                               must trip the min_sample gate
+
+Note: SVG card templates (card.svg.tmpl) are no longer part of the open-source
+play format. Image generation is handled via Interface 2 (see AGENTS.md).
 
 JSON-Schema validation (plays/play.schema.json) runs as a separate CI step via
 ajv; this script enforces the *semantic* rules the schema cannot express.
@@ -33,7 +33,6 @@ from __future__ import annotations
 import math
 import re
 import sys
-import xml.etree.ElementTree as ET
 from decimal import Decimal
 from pathlib import Path
 
@@ -45,8 +44,6 @@ PLAYS_DIR = REPO_ROOT / "plays"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 VAR_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 COMPUTE_PLACEHOLDER_RE = re.compile(r"\$\{([a-z_][a-z0-9_]*)}")
-CARD_PLACEHOLDER_RE = re.compile(r"\$\{([^}]*)}")
-DOTTED_PATH_RE = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
 
 # --- SQL guard (mirror of PlaySqlGuard) -------------------------------------
 SQL_COMMENTS_RE = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
@@ -56,11 +53,7 @@ SQL_FORBIDDEN_RE = re.compile(
 )
 CAR_ID_FILTER_RE = re.compile(r"(?<!:)\bcar_id\s*=\s*:car_id\b", re.IGNORECASE)
 
-# --- card lint (mirror of PlayLoader.lintTemplate) ---------------------------
-TEMPLATE_FORBIDDEN = ["<script", "<foreignobject", "<!entity", "<!doctype"]
-URL_REF_RE = re.compile(r"url\s*\(\s*[\"']?\s*([^)\"']*)", re.IGNORECASE)
-BUILTIN_TEMPLATE_VARS = {"car_name", "car_model", "window_label", "generated_at", "window_days", "watermark"}
-CARD_ONLY_BUILTINS = {"car_name", "car_model", "window_label", "generated_at"}
+CARD_ONLY_BUILTINS = {"car_name", "car_model", "window_label", "generated_at", "watermark"}
 
 
 class PlayError(Exception):
@@ -299,41 +292,6 @@ def check_compute(compute: list, tables: dict):
     return steps
 
 
-def check_card_template(template: str, known_vars: set):
-    lower = template.lower()
-    for forbidden in TEMPLATE_FORBIDDEN:
-        if forbidden in lower:
-            raise PlayError(f"card.svg.tmpl contains forbidden content '{forbidden}'")
-    for ch in template:
-        if ord(ch) > 0xFFFF:
-            raise PlayError(
-                f"card.svg.tmpl contains non-BMP code point '{ch}' (U+{ord(ch):X}) — "
-                "render host has no emoji font; put emoji in the manifest 'emoji:' field"
-            )
-    try:
-        root = ET.fromstring(template)
-    except ET.ParseError as e:
-        raise PlayError(f"card.svg.tmpl is not well-formed XML: {e}") from None
-    for el in root.iter():
-        for attr, value in el.attrib.items():
-            local = attr.rsplit("}", 1)[-1].lower()
-            if local in ("href", "src") and not value.strip().startswith("#"):
-                raise PlayError(
-                    f"card.svg.tmpl <{el.tag.rsplit('}', 1)[-1]}> {local}='{value}' — only "
-                    "local '#id' references are allowed (no external scheme of any kind)"
-                )
-    for m in URL_REF_RE.finditer(template):
-        ref = m.group(1).strip()
-        if not ref.startswith("#"):
-            raise PlayError(f"card.svg.tmpl url({ref}) — only url(#id) references are allowed")
-    for m in CARD_PLACEHOLDER_RE.finditer(template):
-        path = m.group(1)
-        if not DOTTED_PATH_RE.match(path):
-            raise PlayError(f"card.svg.tmpl placeholder '${{{path}}}' is invalid")
-        if path.split(".", 1)[0] not in known_vars:
-            raise PlayError(f"card.svg.tmpl placeholder '${{{path}}}' does not resolve")
-
-
 # ============================================================================
 # fixture runner — mirror of PlayComputeEngine.run + PlayRegistryTest.runFixture
 # ============================================================================
@@ -456,18 +414,6 @@ def validate_play(play_dir: Path):
 
     tables = manifest.get("tables") or {}
     steps = check_compute(manifest.get("compute") or [], tables)
-
-    output_fields = (manifest.get("output") or {}).get("fields") or []
-    known_vars = set(BUILTIN_TEMPLATE_VARS)
-    known_vars.update(var for var, _, _ in steps)
-    known_vars.update(f["name"] for f in output_fields)
-
-    card = manifest.get("card")
-    if card is not None:
-        tmpl_path = play_dir / "card.svg.tmpl"
-        if not tmpl_path.is_file():
-            raise PlayError("manifest declares card but card.svg.tmpl is missing")
-        check_card_template(tmpl_path.read_text(encoding="utf-8"), known_vars)
 
     fixtures_path = play_dir / "fixtures.yaml"
     if not fixtures_path.is_file():

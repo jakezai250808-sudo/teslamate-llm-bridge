@@ -6,9 +6,12 @@ name: Validate plays
 #   1. JSON Schema   — every plays/*/play.yaml validates against
 #                      plays/play.schema.json (draft 2020-12, ajv)
 #   2. Engine mirror — tools/validate_plays.py re-implements the production
-#                      engine's load-time gates (SQL guard, compute rules,
-#                      card template lint) and executes every fixtures.yaml
-#                      case through the compute pipeline, asserting expects.
+#                      engine's load-time gates (SQL guard, compute rules)
+#                      and executes every fixtures.yaml case through the
+#                      compute pipeline, asserting expects.
+#
+# Note: SVG card template lint has been removed; image generation is via
+# Interface 2 (AGENTS.md) — API / browser-driven / platform-native paths.
 #
 # A play that passes here loads and computes identically on the hosted engine.
 
