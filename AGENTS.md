@@ -355,7 +355,7 @@ One play per PR. Do not modify other plays, the schema, or the spec in the same 
 步骤 1 → list_plays()
          返回：[{name: "driving-personality", ...}, ...]
 
-步骤 2 → run_play(play_name="driving-personality", car_id=1)
+步骤 2 → run_play(play_name="driving-personality", car_id=99)   ← demo 用 99；实际 TeslaMate 用你自己的 car_id
          返回：{code: "FNLE", persona: {name: "午夜高速战神", tag: "#服务区VIP年卡用户"},
                 vigor: 78, night_pct: 17, avg_drive_km: 22.6, freq_pct: 83, drive_count: 52, ...}
 
@@ -396,26 +396,48 @@ Agent：[自动串联上面 5 步] → 返回竖版海报图片
    · ChatGPT 用 v1 模板（通用版，GPT Image 不需要 Seedream 白名单约束）
    · 豆包 / 即梦用 v2 模板（Seedream 专用）
 
-3. 用 Chrome MCP 打开新标签：https://chatgpt.com
-   · 确认已登录（页面右上角有用户头像）
-   · 如未登录，提示用户先在浏览器完成登录
+3. 用 Chrome MCP 在后台打开新标签，不要切走用户 active tab：
+   · execute_javascript 检查是否已有 chatgpt.com tab：
+     const tabs = [...document.querySelectorAll('...')]  ← 用 Chrome MCP list_tabs 代替
+   · 若无 chatgpt.com tab，通过 osascript 后台建新 tab（不抢 active）：
+     tell application "Google Chrome"
+       make new tab at end of tabs of window 1 with properties {URL:"https://chatgpt.com"}
+     end tell
+   · 失败分支：如果 Chrome 未运行，告知用户手动打开 chatgpt.com 再说「好了」
 
-4. 在对话输入框粘入完整 prompt + 说明（建议附上一句：「请生成一张图」）
-   · execute_javascript 在输入框写入内容：
-     document.querySelector('div[contenteditable="true"]').focus()
-     // 通过剪贴板或 innerText 注入 prompt
-   · 触发发送（找 Send 按钮或用回车）
+4. 验证已登录（在目标 tab 上跑 JS，不需要 tab active）：
+   · execute_javascript（对目标 tab）:
+     document.querySelector('button[data-testid="profile-button"]') !== null
+   · true = 已登录；false = 未登录 → 告知用户「请先在 chatgpt.com 登录，登录完成后回复我」，
+     等用户回复再继续，不要自动轮询登录状态（无法可靠检测）
 
-5. 等待生图完成（通常 10-30 秒）
-   · 检测 img[src^="https://oaidalleapiprodscus"] 或 .result-image 出现
-   · 超时上限 90 秒，超时提示用户手动等待
+5. 向对话框注入完整 prompt：
+   · 通过剪贴板方式注入（ChatGPT 输入框是 contenteditable，无法 querySelector+value 直接赋值）：
+     ① 用 execute_javascript 把 prompt 写入剪贴板：
+        navigator.clipboard.writeText(`${FILLED_PROMPT}`)
+        // 若 clipboard API 被 CSP 拦，改用剪贴板 mcp 工具写入
+     ② 再 execute_javascript 触发 focus + paste：
+        const el = document.querySelector('div#prompt-textarea, div[contenteditable="true"]')
+        el.focus()
+        document.execCommand('insertText', false, `${FILLED_PROMPT}`)
+   · 触发发送：
+        document.querySelector('button[data-testid="send-button"]')?.click()
+   · 失败分支：如果发送按钮找不到，说明 ChatGPT DOM 结构已变化，
+     告知用户「请手动粘贴以下 prompt 并发送」，并把完整 prompt 作为文本返回
 
-6. 取图
-   · 找生成图的 img 元素，右键菜单「图片另存为」DOM 思路：
-     找到 img.src → 用 fetch + blob → 保存到本地路径
-   · 或提示用户右键保存
+6. 等待生图完成（超时上限 90 秒）：
+   · 每 3 秒轮询一次（不要更频繁）：
+     document.querySelector('img[src*="oaidalleapiprodscus"], img[src*="production-files"]') !== null
+   · 90 秒超时 → 告知用户「生图可能需要更长时间，请在浏览器里等待完成后告诉我」
 
-7. 返回图片路径给用户
+7. 取图 URL（execute_javascript，在目标 tab 上）：
+   · const img = document.querySelector('img[src*="oaidalleapiprodscus"], img[src*="production-files"]')
+     img ? img.src : null
+   · 拿到 URL 后用 fetch + blob 下载到本地（在 JS 环境里或用 curl/wget）：
+     失败分支：如果 URL 是临时 signed URL，下载要在 60 秒内完成；
+     若 fetch 被 CORS 拦，则只返回图片 URL，告知用户右键保存
+
+8. 返回本地图片路径（或临时 URL）给用户
 ```
 
 **注意事项：**
@@ -423,8 +445,11 @@ Agent：[自动串联上面 5 步] → 返回竖版海报图片
 - 用 `make new tab at end of tabs` 创建新标签，不要 activate 窗口
 - 生图过程中不要轮询太频繁（每 3 秒检查一次即可）
 - 如果 ChatGPT 弹出「您已达到当日生图限制」，告知用户并结束
+- ChatGPT DOM 选择器（`#prompt-textarea` 等）会随版本变化；优先用 `[data-testid]` 属性，
+  比 class 名稳定；如果全部失败，fallback 到提示用户手动粘贴 prompt
 
 **豆包网页同理：** 打开 https://www.doubao.com，找生图 bot（如「豆包·图像生成」），步骤与上方相同。
+豆包图片 URL 特征：`src*="lf-bot-studio-plugin-resource"` 或 `src*="p3-bot-sign"`。
 
 ---
 

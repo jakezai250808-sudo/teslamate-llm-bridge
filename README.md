@@ -6,9 +6,13 @@
 **Bring your Tesla to any LLM platform** — driving personality scores, monthly wrapped, charging habits, and more, from your TeslaMate data.
 
 ```bash
-# One-line quick start (after filling .env with your TeslaMate DB creds):
-docker compose --profile prod up -d
-# Then: curl http://localhost:8770/api/v1/cars/1/play/driving-personality
+# Demo quick start (no config needed — car_id=99 is synthetic data):
+docker compose --profile demo up -d --build
+# Then: curl http://localhost:8770/api/v1/cars/99/play/driving-personality
+#
+# Production (requires TeslaMate DB — copy .env.example to .env first):
+# docker compose --profile prod up -d --build
+# Then use your actual car_id: curl http://localhost:8770/api/v1/cars/1/play/driving-personality
 ```
 
 ## Gallery
@@ -57,7 +61,7 @@ docker compose --profile prod up -d
 
 ```bash
 # Pull the repo, then:
-docker compose --profile demo up -d
+docker compose --profile demo up -d --build
 ```
 
 This starts a local PostgreSQL and injects 45 days of synthetic driving data (Model Y LR, Shanghai scenario, `car_id=99`) — no `.env` configuration needed.
@@ -125,12 +129,18 @@ API_TOKEN=
 docker compose --profile prod up -d
 ```
 
-The bridge starts on port **8770**. Startup takes ~5 seconds (Spring Boot).
+> **First run or after upgrading:** add `--build` to force a fresh image build:
+> `docker compose --profile prod up -d --build`
+> Skip `--build` on subsequent runs to reuse the cached image.
+
+The bridge starts on port **8770**. Startup takes ~10–30 seconds on first build (Maven download), ~5 seconds on cached runs.
 
 ```bash
 curl http://localhost:8770/actuator/health
 # {"status":"UP"}
 ```
+
+> If you see `404` for `/actuator/health`, the running image is stale. Run `docker compose --profile prod up -d --build` to rebuild.
 
 ### 4. List available plays
 
@@ -141,7 +151,11 @@ curl http://localhost:8770/api/v1/plays
 ### 5. Run your first play
 
 ```bash
-curl "http://localhost:8770/api/v1/cars/1/play/driving-personality"
+# Demo profile: car_id is always 99
+curl "http://localhost:8770/api/v1/cars/99/play/driving-personality"
+
+# Production profile: replace 1 with your actual TeslaMate car_id
+# curl "http://localhost:8770/api/v1/cars/1/play/driving-personality"
 ```
 
 Sample result:
@@ -314,7 +328,9 @@ Full specification: [`docs/play-manifest-spec.md`](docs/play-manifest-spec.md). 
 Quick setup (full guide: [docs/connect-claude-mcp.md](docs/connect-claude-mcp.md)):
 
 ```bash
-pip install -e mcp-server/
+# macOS Homebrew Python 3.12+: add --break-system-packages (or use a venv)
+pip install --break-system-packages -e mcp-server/
+# Alternative (clean env): python3 -m venv ~/.venv/teslabridge && source ~/.venv/teslabridge/bin/activate && pip install -e mcp-server/
 ```
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
