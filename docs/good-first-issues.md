@@ -1,8 +1,17 @@
 # Good first issues (drafts)
 
-Ready-to-file issue drafts. Maintainers: copy each section into a GitHub issue with labels
-`good first issue` + the label noted. Contributors: if the issue is not filed yet, feel free to
-just open a PR referencing this file.
+Ready-to-file issue drafts for maintainers. When the repo goes public, create one GitHub issue
+per section below:
+
+1. Copy the section body verbatim as the issue description.
+2. Set the title exactly as written in the `##` heading.
+3. Apply labels: `good first issue` + the extra label(s) noted in each section.
+4. Leave the issue open — contributors claim by commenting.
+
+Estimated difficulty: **1** (play proposals, ~2–4 h) · **3** (engine work, 1–2 days).
+
+Contributors: if an issue has not been filed yet, open a PR referencing this file and ping a
+maintainer in the PR description.
 
 ---
 

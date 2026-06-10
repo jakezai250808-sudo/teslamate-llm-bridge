@@ -1,6 +1,18 @@
 # teslamate-llm-bridge
 
-Bring your Tesla to any LLM platform — scoring, shareable cards, and a declarative play framework on top of TeslaMate.
+<!-- CI badge — replace YOUR_GITHUB with your username/org before publishing -->
+<!-- ![CI](https://github.com/YOUR_GITHUB/teslamate-llm-bridge/actions/workflows/ci.yml/badge.svg) -->
+
+**Bring your Tesla to any LLM platform** — scoring, shareable cards, and a declarative play framework on top of TeslaMate.
+
+```bash
+# One-line quick start (after filling .env with your TeslaMate DB creds):
+docker compose up -d
+# Then: curl http://localhost:8770/api/v1/cars/1/play/driving-personality
+```
+
+> **Hero image placeholder** — add a `driving-personality` card screenshot here before publishing.
+> Path: `docs/gallery/driving-personality-sample.png`
 
 > **AI agents:** see [AGENTS.md](AGENTS.md) to add a play in ~10 min — no Java or Python required.
 

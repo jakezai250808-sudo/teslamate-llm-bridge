@@ -1,0 +1,39 @@
+name: CI
+
+# Build badge: ![CI](https://github.com/YOUR_GITHUB/teslamate-llm-bridge/actions/workflows/ci.yml/badge.svg)
+# Replace YOUR_GITHUB with your GitHub username/org before publishing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Bridge build + play compat
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Compile + unit tests (PlayEngineTest, PlayRegistryTest)
+      - name: mvn package
+        run: cd bridge && mvn -q clean package --no-transfer-progress
+
+      # play-compat-test.sh spins up postgres:16-alpine, loads the official
+      # TeslaMate schema, and executes every plays/*/play.yaml SQL against it.
+      # Requires Docker — available on ubuntu-latest runners.
+      - name: Play compat test (SQL vs official TeslaMate schema)
+        run: bash bin/play-compat-test.sh plays
