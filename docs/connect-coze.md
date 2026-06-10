@@ -18,7 +18,7 @@ Example: `https://bridge.example.com`
 2. Choose **OpenAPI Import**.
 3. Paste your spec URL: `https://<your-bridge>/openapi.json`
    Or upload the file directly (download from the URL, update `servers[0].url`, then upload).
-4. Coze will parse the spec and show three tools: `listPlays`, `runPlay`, `renderPlayCard`.
+4. Coze will parse the spec and show two tools: `listPlays`, `runPlay`.
 
 ## Step 3 — configure authentication
 
@@ -64,4 +64,4 @@ For a share card: "给我生成驾驶人格卡片" — Coze renders `image/png` 
 | Plugin import fails | Spec URL not reachable from Coze (check HTTPS, firewall) |
 | Tool calls return 401 | Auth header not configured, or token mismatch |
 | `scored: false` | Not enough TeslaMate data for the time window; try `start_date` further back |
-| Card not displayed | Verify `renderPlayCard` returns `image/png`; Coze displays binary image responses inline |
+| Want a share image? | 豆包自带 Seedream 生图：拿到 runPlay JSON 后，用 plays/<name>/creative-prompt.md 模板填充并让豆包生成图片 |

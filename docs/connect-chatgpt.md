@@ -62,7 +62,7 @@ If you did not set `API_TOKEN`, skip this step (no auth required in local/dev mo
 
 Ask the GPT: "What is my driving personality?" — it should call `runPlay` with `playName=driving-personality` and return your code + persona.
 
-To get a share card image, ask: "Show me my driving personality card." The GPT will call `renderPlayCard` and display the 1080×1080 PNG inline.
+To get a share image, ask: "把结果做成一张分享图". The GPT fills the creative-prompt template with your real data and generates the poster with GPT Image (Interface 2, Path C).
 
 ## Step 6 — turn the result into a shareable social card with GPT Image
 
@@ -95,7 +95,7 @@ The full prompt template (with all placeholders) and model quality comparison ar
 
 > **No GPT Image?** If you are on a plan without image generation, see `docs/image-generation.md`
 > for alternatives: 豆包生图 (Seedream), Qwen-Image-2.0, Gemini flash, or the bridge's built-in
-> SVG card (`renderPlayCard`) which is always available at zero cost.
+> Image generation runs on your own ChatGPT subscription (GPT Image) — zero extra cost.
 
 ## Troubleshooting
 
