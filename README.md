@@ -288,6 +288,7 @@ The included Python MCP server in `mcp-server/` exposes three tools over `stdio`
 | `list_plays` | List all loaded plays (name, title, emoji, description, has_card) |
 | `run_play` | Run a play for a given car and time window, returns structured JSON |
 | `render_play_card` | Render a 1080×1080 PNG share card, returned as base64 (Claude Desktop renders inline) |
+| `generate_play_image` | 调用火山方舟 Seedream-4.0 文生图，传入填好的 creative-prompt 模板，返回生成图片（中国大陆直连，需设置 `ARK_API_KEY`） |
 
 Quick setup (full guide: [docs/connect-claude-mcp.md](docs/connect-claude-mcp.md)):
 
@@ -333,3 +334,7 @@ Then restart Claude Desktop and ask: `列出所有可用玩法` — Claude calls
 ## License
 
 [AGPL-3.0](LICENSE). Plays (YAML manifests, SVG templates, fixtures) contributed to this repo are accepted under the same license.
+
+## Trademark notice
+
+This project is an unofficial community tool and is not affiliated with, endorsed by, or supported by the official [TeslaMate](https://github.com/teslamate-org/teslamate) project. Tesla is a trademark of Tesla, Inc.; this project is not affiliated with Tesla, Inc.
