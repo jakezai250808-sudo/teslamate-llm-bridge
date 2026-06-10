@@ -113,16 +113,56 @@ Anthropic 目前**没有图像生成模型**。Claude Code 本身无法生图，
 
 ### MCP tool 用法
 
-配置完成、重启 Claude Desktop 后，直接在对话中：
+配置完成、重启 Claude Desktop 后，直接对话：
 
 ```
-先跑 run_play(driving-personality, car_id=1)，拿到 JSON 后
-用 creative-prompt 模板填入真实数据，再调用 generate_play_image 生成分享图。
+给我做张驾驶人格卡
 ```
 
-Claude Code 会自动串联这两步；`generate_play_image` 接受：
-- `prompt`：填好占位符的完整文生图 prompt（参考 `plays/driving-personality/creative-prompt.md`）
-- `size`：输出尺寸，默认 `"1024x1024"`；竖版推荐 `"1080x1920"`；横版 `"1920x1080"`
+Claude Code 会自动串联四个工具完成完整流程：
+
+**步骤一：list_plays → 发现可用 play 名称**
+
+```
+[tool: list_plays]
+→ 返回：[{name: "driving-personality", title: "驾驶人格", ...}]
+```
+
+**步骤二：run_play → 拿到结构化驾驶数据**
+
+```
+[tool: run_play, play_name="driving-personality", car_id=1]
+→ 返回：{code: "CNSO", persona: {name: "深夜静音幽灵", tag: "#电机声都嫌吵"},
+         drive_count: 23, vigor: 35, night_pct: 42, avg_drive_km: 8.2, ...}
+```
+
+**步骤三：get_creative_prompt → 拿到 Seedream 专用 prompt 模板**
+
+```
+[tool: get_creative_prompt, play_name="driving-personality"]
+→ 返回：plays/driving-personality/creative-prompt.md 原文
+        （含 v1 通用版 + v2 Seedream 专用版 + 占位符填充说明）
+```
+
+**步骤四：填充占位符 → 调用 generate_play_image → 生成海报图**
+
+Claude Code 将 run_play 返回的真实数据填入模板 v2 的 `{占位符}`，再调用：
+
+```
+[tool: generate_play_image,
+ prompt="竖版手机海报，1536像素宽2048像素高。背景：真实摄影，Tesla Model 3银色停在深夜...",
+ size="1080x1920"]
+→ 返回：base64 PNG 图片（1080×1920 竖版海报）
+```
+
+> **为什么不能跳过步骤三直接写 prompt？**
+> `creative-prompt.md` 里的 v2 模板内嵌了 5 轮迭代、9/10 评分验证的 Seedream 专用调优：
+> 文字白名单约束、措辞元语言翻译、量表布局规则、背景质感词组合。
+> 裸写 prompt 跳过这些规则，生成图中文文字容易乱入、数字漂移、布局崩溃。
+
+`generate_play_image` 参数：
+- `prompt`：必须来自 `get_creative_prompt` 模板填充，不要裸写
+- `size`：默认 `"1024x1024"`；竖版海报用 `"1080x1920"`；横版 `"1920x1080"`
 
 ### 常见错误排查
 
@@ -220,11 +260,20 @@ response = model.generate_content(
 
 ---
 
-## creative-prompt 的模型无关性说明
+## creative-prompt 的模板选择说明
 
 [`plays/driving-personality/creative-prompt.md`](../plays/driving-personality/creative-prompt.md)
-里的 prompt 模板是**模型无关的**——同一段 prompt 在 GPT Image、Gemini、
-Qwen-Image、Seedream 上均可直接使用，效果差异来自底模能力而非 prompt 本身。
+包含**两套模板**，按目标模型选择：
+
+| 模板版本 | 适用模型 | 特点 |
+|---|---|---|
+| **v1（通用版）** | GPT Image、Qwen-Image-2.0、Gemini flash image | 自然段描述 + 设计语言词，GPT 系模型质量最高，无需白名单约束 |
+| **v2（Seedream 专用）** | 火山方舟 Seedream-4.0、豆包生图（即梦） | 白名单约束 + 元语言翻译，5 轮迭代 9/10 评分；不适合 GPT（GPT 不需要白名单） |
+
+`get_creative_prompt` 返回整个文件原文，Claude Code 根据当前生图工具（`generate_play_image` 用 Seedream）自动选择 v2 模板填充。
+
+v1 和 v2 在**同一段 prompt 上测试**：效果差异来自底模能力加上模板针对性调优，
+使用对应模型的专用模板能稳定提升 1-2 分（满分 10 分）。
 
 每个 play 的 creative-prompt 文件尾部会注明当前已验证的模型（示例格式）：
 

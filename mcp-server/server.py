@@ -1,11 +1,20 @@
 """
 teslamate-llm-bridge MCP server
 
-Exposes 4 MCP tools:
+Exposes 6 MCP tools:
   - list_plays           : list all available plays
   - run_play             : run a play for a car, returns JSON result
+  - get_creative_prompt  : read a play's creative-prompt.md template (for image generation)
   - render_play_card     : render a play's share card, returns MCP image content
   - generate_play_image  : call 火山方舟 Seedream 文生图 API, return generated image
+  （tool 3 get_creative_prompt 在 render_play_card 之前注册；编号 4→render, 5→generate）
+
+完整生图流程链（必须按序，跳步会降低质量）：
+  1. list_plays           → 发现可用 play 名称
+  2. run_play             → 拿到结构化 JSON 数据（车辆统计 + 人格码等）
+  3. get_creative_prompt  → 拿到 plays/<name>/creative-prompt.md 里的 prompt 模板
+  4. 填充占位符           → 把 run_play 返回的真实数据填入模板 {占位符}
+  5. generate_play_image  → 用填好的 prompt 生成海报图（裸写 prompt 质量显著下降）
 
 Configuration (environment variables):
   BRIDGE_URL        bridge base URL  (default: http://localhost:8770)
@@ -23,10 +32,14 @@ from __future__ import annotations
 import base64
 import json
 import os
+import pathlib
 import re
 import urllib.error
 import urllib.request
 from typing import Any
+
+# plays 目录：<repo-root>/plays/  （相对于本文件往上一级的同级目录）
+_PLAYS_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent / "plays"
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -83,9 +96,13 @@ mcp = FastMCP(
     name="teslamate-llm-bridge",
     instructions=(
         "Tools to query your TeslaMate driving data via the teslamate-llm-bridge. "
-        "Use list_plays to discover available analyses, run_play to get structured results, "
-        "render_play_card to produce a shareable PNG card, "
-        "and generate_play_image to create a social-share image via 火山方舟 Seedream (China-direct)."
+        "Complete image-generation flow: "
+        "1) list_plays to discover play names; "
+        "2) run_play to get structured data; "
+        "3) get_creative_prompt to fetch the prompt template; "
+        "4) fill placeholders with real data; "
+        "5) generate_play_image to produce the social-share poster. "
+        "render_play_card gives a deterministic SVG-based PNG card without external AI."
     ),
 )
 
@@ -99,11 +116,17 @@ mcp = FastMCP(
         "List all available plays (analyses) loaded by the bridge engine. "
         "Returns each play's name, title, emoji, description, default time window in days, "
         "and whether a share card image is available. "
-        "Call this first to discover which play names to pass to run_play."
+        "Call this first to discover which play names to pass to run_play / get_creative_prompt."
     ),
 )
 def list_plays() -> dict[str, Any]:
-    """Returns: {data: {plays: [{name, title, emoji, description, scope, default_days, has_card}]}}"""
+    """
+    Step 1 of the image-generation flow: discover which play names exist.
+
+    Returns: {data: {plays: [{name, title, emoji, description, scope, default_days, has_card}]}}
+
+    Next step: pass the desired play name to run_play to get structured driving data.
+    """
     return _get_json("/api/v1/plays")
 
 
@@ -127,6 +150,8 @@ def run_play(
     end_date: str = "",
 ) -> dict[str, Any]:
     """
+    Step 2 of the image-generation flow: get structured driving data for a car.
+
     Args:
         play_name:  kebab-case play name, e.g. "driving-personality"
         car_id:     TeslaMate car ID (integer), e.g. 1
@@ -134,7 +159,12 @@ def run_play(
         end_date:   ISO 8601 date or datetime for window end   (optional, default: now)
 
     Returns:
-        Scored result with play-specific fields, or unscored with sample/min_sample.
+        Scored result with play-specific fields (e.g. code, persona, vigor, night_pct, ...),
+        or unscored with sample/min_sample if insufficient data.
+
+    Next step: call get_creative_prompt(play_name) to fetch the image prompt template,
+    then fill in the placeholders with values from this result, and pass the completed
+    prompt to generate_play_image.
     """
     params: dict[str, str] = {}
     if start_date:
@@ -144,7 +174,53 @@ def run_play(
     return _get_json(f"/api/v1/cars/{car_id}/play/{play_name}", params)
 
 
-# ── Tool 3: render_play_card ─────────────────────────────────────────────────
+# ── Tool 3: get_creative_prompt ─────────────────────────────────────────────
+
+
+@mcp.tool(
+    name="get_creative_prompt",
+    description=(
+        "读取指定玩法（play）的 creative-prompt.md 模板原文并返回。"
+        "模板包含 v1（通用版，适用于 GPT Image / Qwen / Gemini）"
+        "和 v2（Seedream 专用，适用于火山方舟 Seedream-4.0 / 豆包生图）两套 prompt，"
+        "以及占位符填充说明和 Seedream 措辞规律。"
+        "把 run_play 返回的真实数据填入模板占位符，再传给 generate_play_image 生成图片。"
+        "找不到模板时返回中文操作引导。"
+    ),
+)
+def get_creative_prompt(play_name: str) -> str:
+    """
+    Step 3 of the image-generation flow: fetch the image prompt template for a play.
+
+    Args:
+        play_name: kebab-case play name, e.g. "driving-personality" or "monthly-wrapped"
+
+    Returns:
+        The raw content of plays/<play_name>/creative-prompt.md.
+        If the file is not found, returns a Chinese guidance string explaining next steps.
+
+    Next step: fill the {placeholders} in the returned template with real values from
+    run_play, then pass the completed prompt to generate_play_image.
+    Using the template rather than writing a prompt from scratch significantly improves
+    image quality — the templates embed model-specific tuning from iterative testing.
+    """
+    prompt_path = _PLAYS_DIR / play_name / "creative-prompt.md"
+    if not prompt_path.exists():
+        available = [
+            p.name for p in _PLAYS_DIR.iterdir()
+            if p.is_dir() and (p / "creative-prompt.md").exists()
+        ]
+        available_str = "、".join(available) if available else "（暂无）"
+        return (
+            f"未找到玩法「{play_name}」的创作引导模板（{prompt_path}）。\n\n"
+            f"当前已有模板的玩法：{available_str}\n\n"
+            "使用 list_plays 可查看所有已加载玩法。\n"
+            "如需为新玩法添加模板，请在对应 plays/<name>/ 目录下创建 creative-prompt.md 文件。"
+        )
+    return prompt_path.read_text(encoding="utf-8")
+
+
+# ── Tool 5: render_play_card ─────────────────────────────────────────────────
 
 
 @mcp.tool(
@@ -181,15 +257,18 @@ def render_play_card(
     return [ImageContent(type="image", data=b64, mimeType="image/png")]
 
 
-# ── Tool 4: generate_play_image ─────────────────────────────────────────────
+# ── Tool 6: generate_play_image ─────────────────────────────────────────────
 
 
 @mcp.tool(
     name="generate_play_image",
     description=(
         "用火山方舟 Seedream-4.0 文生图模型生成一张分享图，并以 base64 图片形式返回。"
-        "调用方需先用 run_play 拿到 JSON 结果，再用 plays/<name>/creative-prompt.md 里的模板"
-        "填入真实数据，得到完整 prompt 后传入此工具。"
+        "调用前必须先走完整流程：1) run_play 拿 JSON 数据；"
+        "2) get_creative_prompt 拿 plays/<name>/creative-prompt.md 模板；"
+        "3) 把真实数据填入模板占位符，得到完整 prompt 后传入此工具。"
+        "直接裸写 prompt（跳过模板步骤）会显著降低图片质量——"
+        "模板内嵌了 5 轮迭代调优的 Seedream 专用措辞规律（9/10 评分验证）。"
         "需要设置环境变量 ARK_API_KEY（火山方舟 API Key）；未设置时返回配置引导。"
         "中国大陆直连，无需 VPN，原生中文海报能力强，新用户 200 张免费。"
     ),
@@ -199,9 +278,24 @@ def generate_play_image(
     size: str = "1024x1024",
 ) -> list[ImageContent] | str:
     """
+    Step 5 of the image-generation flow: call Seedream-4.0 to generate the poster image.
+
+    IMPORTANT: prompt MUST be filled from the template returned by get_creative_prompt,
+    not written from scratch. The templates embed model-specific tuning (whitelist constraints,
+    phrasing rules, layout instructions) from 5 rounds of iterative testing. A raw prompt
+    without these constraints will produce noticeably lower-quality results.
+
+    Recommended call sequence:
+        1. list_plays()                           → discover play names
+        2. run_play(play_name, car_id)            → get structured driving data (JSON)
+        3. get_creative_prompt(play_name)         → get the prompt template (v2 for Seedream)
+        4. fill {placeholders} with run_play data → produce completed prompt string
+        5. generate_play_image(prompt, size)      → this tool, returns base64 PNG
+
     Args:
-        prompt: 已用 creative-prompt 模板填充完毕的完整文生图 prompt（调用方负责填充占位符）
-        size:   输出尺寸，方舟支持 "1024x1024"（默认）/ "1080x1920" / "1920x1080" 等
+        prompt: 已用 get_creative_prompt 模板填充占位符后的完整文生图 prompt；
+                裸写 prompt（跳过模板步骤）质量显著下降
+        size:   输出尺寸，方舟支持 "1024x1024"（默认）/ "1080x1920"（竖版）/ "1920x1080" 等
 
     Returns:
         成功：MCP image content 列表 [{type: "image", data: "<base64>", mimeType: "image/png"}]
