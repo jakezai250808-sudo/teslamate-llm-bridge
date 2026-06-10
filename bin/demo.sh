@@ -11,11 +11,14 @@
 #   6. Print asciinema recording hint
 #
 # Usage:
-#   bash bin/demo.sh [--car-id N]
+#   bash bin/demo.sh [--car-id N] [--demo]
 #
 #   --car-id N   TeslaMate car_id to use (default: 1)
+#   --demo       Use built-in demo data (no TeslaMate required).
+#                Starts the 'demo' compose profile with synthetic
+#                45-day Model Y LR Shanghai data, sets car_id=99.
 #
-# Pre-requisites:
+# Pre-requisites (non-demo mode):
 #   - .env file exists with TM_DB_* set (copy from .env.example)
 #   - Docker Desktop running
 # ================================================================
@@ -23,18 +26,25 @@
 set -euo pipefail
 
 CAR_ID=1
+DEMO_MODE=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --car-id) CAR_ID="$2"; shift 2;;
+    --demo)   DEMO_MODE=true; shift;;
     *) echo "Unknown arg: $1" >&2; exit 1;;
   esac
 done
 
+# --demo auto-sets car_id=99 unless explicitly overridden
+if [[ "$DEMO_MODE" == "true" && "$CAR_ID" == "1" ]]; then
+  CAR_ID=99
+fi
+
 BASE_URL="http://localhost:8770"
 AUTH_HEADER=""
 
-# Pick up API_TOKEN from .env if present
-if [[ -f .env ]]; then
+# Pick up API_TOKEN from .env if present (only in non-demo mode)
+if [[ "$DEMO_MODE" == "false" && -f .env ]]; then
   TOKEN=$(grep -E '^API_TOKEN=' .env | cut -d= -f2- | tr -d '"' || true)
   if [[ -n "$TOKEN" ]]; then
     AUTH_HEADER="-H \"Authorization: Bearer $TOKEN\""
@@ -54,22 +64,34 @@ _curl() {
 echo ""
 echo "================================================================"
 echo " teslamate-llm-bridge demo"
+if [[ "$DEMO_MODE" == "true" ]]; then
+  echo " Mode: DEMO (synthetic data, car_id=99, no TeslaMate required)"
+fi
 echo "================================================================"
 echo ""
 
 # ------------------------------------------------------------------
-echo ">>> [1/5] Starting bridge (docker compose up -d)..."
-docker compose up -d
-echo "    Bridge starting — waiting up to 60s for health..."
+if [[ "$DEMO_MODE" == "true" ]]; then
+  echo ">>> [1/5] Starting demo profile (postgres-demo + bridge-demo)..."
+  echo "    First run pulls postgres:16-alpine and seeds ~45 days of data."
+  echo "    This takes ~30s on first boot."
+  docker compose --profile demo up -d
+  SERVICE_NAME="bridge-demo"
+else
+  echo ">>> [1/5] Starting bridge (docker compose up -d)..."
+  docker compose up -d
+  SERVICE_NAME="bridge"
+fi
 
-for i in $(seq 1 30); do
+echo "    Waiting up to 90s for health..."
+for i in $(seq 1 45); do
   if _curl "${BASE_URL}/actuator/health" -o /dev/null 2>/dev/null; then
     echo "    Health: UP (after ~$((i*2))s)"
     break
   fi
-  if [[ $i -eq 30 ]]; then
-    echo "    ERROR: Bridge did not become healthy within 60s"
-    docker compose logs bridge | tail -30
+  if [[ $i -eq 45 ]]; then
+    echo "    ERROR: Bridge did not become healthy within 90s"
+    docker compose logs "${SERVICE_NAME}" 2>/dev/null | tail -30 || true
     exit 1
   fi
   sleep 2
@@ -83,9 +105,16 @@ echo "$PLAYS_JSON" | python3 -m json.tool 2>/dev/null || echo "$PLAYS_JSON"
 
 # ------------------------------------------------------------------
 echo ""
-echo ">>> [3/5] Running driving-personality (car_id=${CAR_ID}, window=90 days)..."
-START_DATE=$(date -v-90d '+%Y-%m-%d' 2>/dev/null || date -d '90 days ago' '+%Y-%m-%d' 2>/dev/null || echo "2024-01-01")
-RESULT=$(_curl "${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality?start_date=${START_DATE}")
+echo ">>> [3/5] Running driving-personality (car_id=${CAR_ID})..."
+if [[ "$DEMO_MODE" == "true" ]]; then
+  # Demo data spans 2026-04-27 ~ 2026-06-10; use a fixed window that covers it
+  START_DATE="2026-05-11"
+  END_DATE="2026-06-11"
+  RESULT=$(_curl "${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality?start_date=${START_DATE}&end_date=${END_DATE}")
+else
+  START_DATE=$(date -v-90d '+%Y-%m-%d' 2>/dev/null || date -d '90 days ago' '+%Y-%m-%d' 2>/dev/null || echo "2024-01-01")
+  RESULT=$(_curl "${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality?start_date=${START_DATE}")
+fi
 echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
 
 # Extract persona name for display
@@ -97,7 +126,13 @@ echo "    Persona: ${PERSONA}"
 echo ""
 echo ">>> [4/5] Downloading share card PNG (car_id=${CAR_ID})..."
 CARD_PATH="/tmp/driving-personality-demo.png"
-if _curl "${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality/card.png" -o "${CARD_PATH}"; then
+if [[ "$DEMO_MODE" == "true" ]]; then
+  CARD_URL="${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality/card.png?start_date=${START_DATE}&end_date=${END_DATE}"
+else
+  CARD_URL="${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality/card.png"
+fi
+
+if _curl "${CARD_URL}" -o "${CARD_PATH}"; then
   BYTES=$(wc -c < "${CARD_PATH}" | tr -d ' ')
   echo "    Card saved: ${CARD_PATH} (${BYTES} bytes)"
   if command -v open &>/dev/null; then
@@ -107,7 +142,7 @@ if _curl "${BASE_URL}/api/v1/cars/${CAR_ID}/play/driving-personality/card.png" -
     xdg-open "${CARD_PATH}"
   fi
 else
-  echo "    Card render failed — 'scored: false'? Try --car-id with another car or a wider date range."
+  echo "    Card render failed — 'scored: false'? Try a wider date range."
 fi
 
 # ------------------------------------------------------------------
@@ -120,9 +155,18 @@ echo "   - Connect to Claude Desktop (MCP):  docs/connect-claude-mcp.md"
 echo "   - Connect to ChatGPT Actions:        docs/connect-chatgpt.md"
 echo "   - Connect to Coze:                   docs/connect-coze.md"
 echo "   - Add a new play:                    AGENTS.md"
+if [[ "$DEMO_MODE" == "true" ]]; then
+  echo ""
+  echo " Stop demo:"
+  echo "   docker compose --profile demo down"
+fi
 echo ""
 echo " To record an asciinema screencast of this demo:"
-echo "   asciinema rec demo.cast --command 'bash bin/demo.sh --car-id ${CAR_ID}'"
+if [[ "$DEMO_MODE" == "true" ]]; then
+  echo "   asciinema rec demo.cast --command 'bash bin/demo.sh --demo'"
+else
+  echo "   asciinema rec demo.cast --command 'bash bin/demo.sh --car-id ${CAR_ID}'"
+fi
 echo "   asciinema play demo.cast"
 echo "   asciinema upload demo.cast  # to share at asciinema.org"
 echo "================================================================"

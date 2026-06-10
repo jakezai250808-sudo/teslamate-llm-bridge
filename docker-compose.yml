@@ -1,4 +1,7 @@
 services:
+  # ── default profile (production / self-hosted) ─────────────────────────────
+  # Requires a running TeslaMate PostgreSQL instance.
+  # Configure TM_DB_* in .env (copy from .env.example).
   bridge:
     build: .
     ports:
@@ -17,3 +20,60 @@ services:
       # Optional: external plays directory (mounted below)
       PLAYS_DIR: ${PLAYS_DIR:-}
     restart: unless-stopped
+
+  # ── demo profile ────────────────────────────────────────────────────────────
+  # No TeslaMate required. Spins up a local PostgreSQL seeded with 74 synthetic
+  # drives (45 days, Model Y LR, Shanghai scenario) and starts the bridge
+  # pointed at it — all in one command:
+  #
+  #   docker compose --profile demo up -d
+  #
+  # Then call any play with car_id=99:
+  #   curl "http://localhost:8770/api/v1/cars/99/play/driving-personality"
+
+  postgres-demo:
+    image: postgres:16-alpine
+    profiles: [demo]
+    environment:
+      POSTGRES_DB: teslamate
+      POSTGRES_USER: teslamate
+      POSTGRES_PASSWORD: teslamate_demo
+    volumes:
+      # 1. Official TeslaMate schema (creates all tables)
+      - ./ops/teslamate-official-schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+      # 2. Synthetic demo data (car_id=99, VIN=DEMO0000000000001)
+      - ./ops/demo/demo-seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "teslamate"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - demo-net
+
+  bridge-demo:
+    build: .
+    profiles: [demo]
+    ports:
+      - "8770:8770"
+    environment:
+      TM_DB_HOST: postgres-demo
+      TM_DB_PORT: 5432
+      TM_DB_NAME: teslamate
+      TM_DB_USER: teslamate
+      TM_DB_PASS: teslamate_demo
+      # Only expose demo car
+      CAR_IDS: "99"
+      # No auth token needed for demo
+      API_TOKEN: ""
+      PLAYS_DIR: ""
+    depends_on:
+      postgres-demo:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - demo-net
+
+networks:
+  demo-net:
+    driver: bridge

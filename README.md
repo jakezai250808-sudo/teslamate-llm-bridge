@@ -26,6 +26,38 @@ docker compose up -d
 - **Multi-platform out of the box** — the same play is exposed as a ChatGPT Actions endpoint, a Coze plugin tool, and an MCP tool. Write once, every assistant can call it.
 - **Safe by construction** — plays are *not* raw SQL access. Every manifest passes a JSON-Schema gate, an SQL static guard (SELECT-only, no DDL/DML, statement-level timeout, read-only transaction), a ~150-line arithmetic-only expression language (no SpEL, no method calls), and an SVG template lint before it is ever loaded.
 
+## No TeslaMate yet? Try the demo in one command
+
+If you do not have a TeslaMate instance, use the built-in demo mode to experience all plays instantly:
+
+```bash
+# Pull the repo, then:
+docker compose --profile demo up -d
+```
+
+This starts a local PostgreSQL and injects 45 days of synthetic driving data (Model Y LR, Shanghai scenario, `car_id=99`) — no `.env` configuration needed.
+
+Try any play right away:
+
+```bash
+# Driving personality
+curl "http://localhost:8770/api/v1/cars/99/play/driving-personality"
+
+# Charging habits
+curl "http://localhost:8770/api/v1/cars/99/play/charging-habit"
+
+# Monthly wrapped
+curl "http://localhost:8770/api/v1/cars/99/play/monthly-wrapped"
+
+# Download a shareable 1080x1080 PNG card
+curl "http://localhost:8770/api/v1/cars/99/play/driving-personality/card.png" -o card.png
+```
+
+> Demo data is fully synthetic — no real VIN, no real GPS coordinates, no real owner.
+> VIN is `DEMO0000000000001`. See [DEMO.md](DEMO.md) for the full dataset description.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
