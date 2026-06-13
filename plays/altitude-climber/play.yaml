@@ -1,0 +1,132 @@
+# ============================================================================
+# 电动登山家 —— 累计爬升玩法（plays/_template 为格式参照，driving-personality 为完整范例）
+#
+# 维度：把窗口内每段行程的爬升米数（TeslaMate drives.ascent）累加，得到「累计爬升」，
+# 再换算成可晒的地标当量：东方明珠塔（468m）几座、珠穆朗玛峰（8848m）百分之几座，
+# 并按累计爬升落到 5 档登山人格（平原 / 丘陵 / 周末 / 高原 / 云端）。
+#
+# 为什么是新维度：现有 extremes-card 只取单次 max_elevation（某一程到过多高），
+# 没有玩法做「累计爬了多少」。累计爬升和绝对海拔正交——上海平原车主单程海拔不高，
+# 但天天上下高架/地库坡道，累计爬升一样可观，城市车主也能玩。
+#
+# 地标阈值（米）：
+#   东方明珠塔 468 / 泰山 1545 / 富士山 3776 / 珠穆朗玛峰 8848
+# 档位边界即取这些地标，越过一座地标就升一档，叙事和数字自洽、有晒卡欲。
+# ============================================================================
+
+schema_version: 1
+
+name: altitude-climber
+title: 电动登山家
+emoji: "⛰️"
+
+description: >-
+  用近 30 天 TeslaMate 行车数据累加每段行程的爬升（drives.ascent），算出累计爬升米数，
+  换算成「几座东方明珠塔 / 百分之几座珠峰」，并按累计爬升给 5 档登山人格称号与自嘲标签，
+  可据此生成竖版分享海报。用户问「我的车爬了多少海拔 / 累计爬升多少 / 我是不是登山党 /
+  测测我的爬坡量」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 4 个聚合指标（恰 1 行）：drive_count / total_ascent_m / total_descent_m / max_ascent_m。
+# ascent / descent 是 TeslaMate drives 表的累计爬升 / 下降（smallint，单位米，由 TeslaMate
+# 按行程轨迹算好）。SUM/MAX 空输入返 NULL，必须 COALESCE；COUNT(*) 空集自动返 0。
+# 半开窗口 start_date >= :start AND start_date < :end（与 AGENTS.md 一致）。
+sql: |-
+  SELECT
+    COUNT(*) AS drive_count,
+    COALESCE(SUM(ascent), 0) AS total_ascent_m,
+    COALESCE(SUM(descent), 0) AS total_descent_m,
+    COALESCE(MAX(ascent), 0) AS max_ascent_m
+  FROM drives
+  WHERE car_id = :car_id
+    AND start_date >= :start
+    AND start_date < :end
+
+min_sample:
+  field: drive_count
+  min: 5
+
+compute:
+  # ---- 地标当量 ----
+  # 珠峰进度（%）：可超过 100（累计爬升超过一座珠峰），用于叙事「X% 座珠峰」。
+  - var: everest_pct
+    expr: "ROUND(total_ascent_m * 100 / 8848)"
+  # 东方明珠塔（468m）当量座数。
+  - var: pearl_count
+    expr: "ROUND(total_ascent_m / 468)"
+  # 单程平均爬升（米/程）。
+  - var: avg_ascent
+    expr: "ROUND(total_ascent_m / GREATEST(drive_count, 1))"
+  # 净爬升 = 累计爬升 - 累计下降（可为负：窗口内整体下坡更多）。
+  - var: net_climb
+    expr: "total_ascent_m - total_descent_m"
+
+  # ---- 5 档登山人格（按累计爬升米数判档，直接输出中文称号）----
+  # 边界即地标：500 起步、泰山 1545、富士山 3776、珠峰 8848；末项省 lt 作兜底。
+  - var: persona_name
+    level:
+      input: total_ascent_m
+      thresholds:
+        - lt: 500
+          label: "平原巡航员"
+        - lt: 1545
+          label: "城市丘陵客"
+        - lt: 3776
+          label: "周末登山客"
+        - lt: 8848
+          label: "高原远征队"
+        - label: "云端征服者"
+
+  # ---- 查表补充描述 + 自嘲标签 ----
+  - var: persona
+    lookup:
+      key: persona_name
+      table: personas
+      default:
+        name: "神秘登山体"
+        desc: "你的爬升轨迹超出了已知五档，建议联系珠峰大本营。"
+        tag: "#待收录新物种"
+
+  - var: summary
+    template: "近 ${window_days} 天累计爬升 ${total_ascent_m} 米，相当于 ${pearl_count} 座东方明珠塔、${everest_pct}% 座珠峰。你是「${persona_name}」。"
+
+tables:
+  personas:
+    "平原巡航员":
+      name: "平原巡航员"
+      desc: "你的车基本贴着海平面巡航，坡道对它来说是传说。"
+      tag: "#海平面忠实用户"
+    "城市丘陵客":
+      name: "城市丘陵客"
+      desc: "高架、地库、立交……城市的起伏被你一寸寸爬了出来。"
+      tag: "#高架桥也算山"
+    "周末登山客":
+      name: "周末登山客"
+      desc: "累计爬升越过一座泰山，周末的盘山公路没白跑。"
+      tag: "#泰山打卡选手"
+    "高原远征队":
+      name: "高原远征队"
+      desc: "爬升赶超一座富士山，方向盘后的高原反应可以了解一下。"
+      tag: "#富士山以上玩家"
+    "云端征服者":
+      name: "云端征服者"
+      desc: "这段时间你的车爬完了一整座珠穆朗玛峰，恐怖如斯。"
+      tag: "#珠峰俱乐部"
+
+output:
+  fields:
+    - { name: total_ascent_m, from: total_ascent_m, type: number }
+    - { name: total_descent_m, from: total_descent_m, type: number }
+    - { name: max_ascent_m, from: max_ascent_m, type: number }
+    - { name: net_climb, from: net_climb, type: number }
+    - { name: everest_pct, from: everest_pct, type: number }
+    - { name: pearl_count, from: pearl_count, type: number }
+    - { name: avg_ascent, from: avg_ascent, type: number }
+    - { name: persona_name, from: persona_name, type: string }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
+    - { name: drive_count, from: drive_count, type: number }

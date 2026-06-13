@@ -1,0 +1,122 @@
+# ============================================================================
+# altitude-climber fixtures —— CI（tools/validate_plays.py + PlayRegistryTest）
+# 用 mock SQL 行验证 compute 流水线可执行 + 地标当量 / 5 档人格 / 查表 / 摘要全对。
+# 覆盖全部 5 个 level 分支（平原 / 丘陵 / 周末 / 高原 / 云端）+ 1 个 unscored。
+# 常量：珠峰 8848m，东方明珠塔 468m。ROUND = 四舍五入到整数（half-up）。
+# ============================================================================
+
+fixtures:
+  # 云端征服者（catch-all 分支，总爬升 ≥ 8848）
+  # everest_pct = ROUND(9200*100/8848) = ROUND(103.978) = 104（>100，已超一座珠峰）
+  # pearl_count = ROUND(9200/468)      = ROUND(19.658)  = 20
+  # avg_ascent  = ROUND(9200/GREATEST(60,1)) = ROUND(153.33) = 153
+  # net_climb   = 9200 - 9000 = 200
+  - name: everest-conqueror
+    window_days: 30
+    row:
+      drive_count: 60
+      total_ascent_m: 9200
+      total_descent_m: 9000
+      max_ascent_m: 420
+    expect:
+      everest_pct: 104
+      pearl_count: 20
+      avg_ascent: 153
+      net_climb: 200
+      persona_name: "云端征服者"
+      persona.name: "云端征服者"
+      persona.tag: "#珠峰俱乐部"
+      summary: "近 30 天累计爬升 9200 米，相当于 20 座东方明珠塔、104% 座珠峰。你是「云端征服者」。"
+
+  # 高原远征队（lt 8848 分支，3776 ≤ 总爬升 < 8848）
+  # everest_pct = ROUND(4200*100/8848) = ROUND(47.468) = 47
+  # pearl_count = ROUND(4200/468)      = ROUND(8.974)  = 9
+  # avg_ascent  = ROUND(4200/40) = 105 ; net_climb = 4200 - 4100 = 100
+  - name: highland-expedition
+    window_days: 30
+    row:
+      drive_count: 40
+      total_ascent_m: 4200
+      total_descent_m: 4100
+      max_ascent_m: 310
+    expect:
+      everest_pct: 47
+      pearl_count: 9
+      avg_ascent: 105
+      net_climb: 100
+      persona_name: "高原远征队"
+      persona.name: "高原远征队"
+      persona.tag: "#富士山以上玩家"
+      summary: "近 30 天累计爬升 4200 米，相当于 9 座东方明珠塔、47% 座珠峰。你是「高原远征队」。"
+
+  # 周末登山客（lt 3776 分支，1545 ≤ 总爬升 < 3776）
+  # everest_pct = ROUND(2000*100/8848) = ROUND(22.604) = 23
+  # pearl_count = ROUND(2000/468)      = ROUND(4.273)  = 4
+  # avg_ascent  = ROUND(2000/30) = ROUND(66.67) = 67 ; net_climb = 2000 - 1900 = 100
+  - name: weekend-hiker
+    window_days: 30
+    row:
+      drive_count: 30
+      total_ascent_m: 2000
+      total_descent_m: 1900
+      max_ascent_m: 210
+    expect:
+      everest_pct: 23
+      pearl_count: 4
+      avg_ascent: 67
+      net_climb: 100
+      persona_name: "周末登山客"
+      persona.name: "周末登山客"
+      persona.tag: "#泰山打卡选手"
+      summary: "近 30 天累计爬升 2000 米，相当于 4 座东方明珠塔、23% 座珠峰。你是「周末登山客」。"
+
+  # 城市丘陵客（lt 1545 分支，500 ≤ 总爬升 < 1545）
+  # everest_pct = ROUND(900*100/8848) = ROUND(10.172) = 10
+  # pearl_count = ROUND(900/468)      = ROUND(1.923)  = 2
+  # avg_ascent  = ROUND(900/20) = 45 ; net_climb = 900 - 880 = 20
+  - name: city-hill-rider
+    window_days: 30
+    row:
+      drive_count: 20
+      total_ascent_m: 900
+      total_descent_m: 880
+      max_ascent_m: 120
+    expect:
+      everest_pct: 10
+      pearl_count: 2
+      avg_ascent: 45
+      net_climb: 20
+      persona_name: "城市丘陵客"
+      persona.name: "城市丘陵客"
+      persona.tag: "#高架桥也算山"
+      summary: "近 30 天累计爬升 900 米，相当于 2 座东方明珠塔、10% 座珠峰。你是「城市丘陵客」。"
+
+  # 平原巡航员（lt 500 分支，总爬升 < 500，net_climb 取负值覆盖减法）
+  # everest_pct = ROUND(300*100/8848) = ROUND(3.39)  = 3
+  # pearl_count = ROUND(300/468)      = ROUND(0.641) = 1
+  # avg_ascent  = ROUND(300/15) = 20 ; net_climb = 300 - 310 = -10
+  - name: plain-cruiser
+    window_days: 30
+    row:
+      drive_count: 15
+      total_ascent_m: 300
+      total_descent_m: 310
+      max_ascent_m: 40
+    expect:
+      everest_pct: 3
+      pearl_count: 1
+      avg_ascent: 20
+      net_climb: -10
+      persona_name: "平原巡航员"
+      persona.name: "平原巡航员"
+      persona.tag: "#海平面忠实用户"
+      summary: "近 30 天累计爬升 300 米，相当于 1 座东方明珠塔、3% 座珠峰。你是「平原巡航员」。"
+
+  # 数据不足：drive_count 3 < min_sample 5 → unscored（卡片走灰色兜底，不跑 compute）
+  - name: insufficient-sample
+    row:
+      drive_count: 3
+      total_ascent_m: 120
+      total_descent_m: 110
+      max_ascent_m: 50
+    expect_unscored: true
