@@ -432,7 +432,7 @@ python3 tools/validate_plays.py
 - [x] MCP server — 4 tools: `list_plays` / `run_play` / `get_creative_prompt` / `generate_play_image`
 - [x] Demo mode — 45-day synthetic data, `docker compose --profile demo up -d` / Demo 模式，45 天合成数据
 - [x] Interface 2 image generation — Seedream 4.0 API + browser-driven + platform native documented / 接口二生图三路径文档完整
-- [ ] Pre-built Docker image published to GHCR / 预构建 Docker 镜像发布到 GHCR
+- [x] Pre-built Docker image published to GHCR / 预构建 Docker 镜像发布到 GHCR — multi-arch (amd64+arm64) workflow ready, publishes on `vX.Y.Z` tag; see [docs/release.md](docs/release.md) / 多架构发布 workflow 就绪，打 tag 即发布
 
 ---
 

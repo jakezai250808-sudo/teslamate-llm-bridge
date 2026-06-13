@@ -1,0 +1,17 @@
+# Dockerfile.release — 运行时镜像（供 .github/workflows/release-image.yml 用）
+#
+# 与根目录 Dockerfile（从源码多阶段 build，给本地/用户自助构建用）分工不同：
+# 本文件只做「打包预构建好的 jar」，不在镜像内跑 Maven。
+#
+# 为什么这样能产出 amd64 + arm64 多架构镜像而无需 QEMU 模拟：
+#   Spring Boot fat jar 是纯 JVM 字节码（本项目无任何 native 依赖，Postgres JDBC
+#   也是纯 Java），跨架构通用。唯一与架构相关的是基础 JRE 镜像，而
+#   eclipse-temurin:21-jre-jammy 本身就是多架构。所以 buildx 只需为每个目标架构
+#   拉对应的 base，再 COPY 同一个 jar——没有 RUN 执行架构相关指令，构建快且稳。
+#
+# CI 流程：runner 上先 `mvn package` 出 jar → 拷到构建上下文 app.jar → 本文件打包。
+FROM eclipse-temurin:21-jre-jammy
+WORKDIR /app
+COPY app.jar app.jar
+EXPOSE 8770
+ENTRYPOINT ["java", "-jar", "app.jar"]

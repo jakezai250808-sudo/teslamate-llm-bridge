@@ -1,0 +1,83 @@
+name: Release image (GHCR)
+
+# 把预构建 Docker 镜像发布到 GHCR（ghcr.io/<owner>/teslamate-llm-bridge）。
+# 触发：
+#   - push tag v*.*.*  → 正式版，打 semver 标签 + latest
+#   - 手动 workflow_dispatch → 推一个 :edge + :sha 测试镜像（不动 latest）
+# 凭据：仅用内置 GITHUB_TOKEN（packages: write），无需任何外部密钥。
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release-image:
+    name: Build & push multi-arch image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # 在 runner（amd64）上构建一次 jar。jar 是纯 JVM 字节码、跨架构通用，
+      # 因此无需为 arm64 重复用 QEMU 模拟 Maven 构建。
+      - name: Build jar
+        run: |
+          cd bridge && mvn -q -DskipTests clean package --no-transfer-progress
+          cd ..
+          cp bridge/target/teslamate-llm-bridge-*.jar app.jar
+          ls -lh app.jar
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # latest 只在打 tag 时跟随；手动触发只产出 edge + sha
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha
+
+      - name: Build & push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
