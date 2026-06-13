@@ -18,11 +18,13 @@
 - 你授予维护者永久、不可撤销、可再许可（含商业许可）的使用权及专利许可
 - 这与 Apache Software Foundation、Google、CNCF 等主流开源基金会的 CLA 实践一致
 
-**cla-assistant 配置状态**：尚未启用（待维护者完成 GitHub App OAuth 授权后生效）。在此之前，提交 PR 时请在 PR 描述中手动加一行：
+**如何签署**：CLA Assistant（GitHub Action，无需第三方 OAuth）已启用。第一次提 PR 时，机器人会自动在 PR 上留言提示。你只需在该 PR 里**评论这一行**即可完成签署（一次性，之后所有 PR 自动通过）：
 
 ```
-I have read and agree to the CLA at https://github.com/jakezai250808-sudo/teslamate-llm-bridge/blob/main/CLA.md
+I have read the CLA Document and I hereby sign the CLA
 ```
+
+> 措辞需与上面**完全一致**，机器人才会识别。签署记录提交在 `signatures/version1/cla.json`。
 
 ---
 
@@ -31,6 +33,8 @@ I have read and agree to the CLA at https://github.com/jakezai250808-sudo/teslam
 ### 1. Play 玩法定义（`plays/` 目录）
 
 这是社区贡献的主战场。每个 play 是一个声明式 YAML 文件，描述一类 Tesla 数据洞察（行程摘要、充电习惯、驾驶性格分析等）。
+
+> 🚀 **第一次加 play？** 看 [`docs/quickstart-add-a-play.md`](docs/quickstart-add-a-play.md)——10 分钟从零到 PR，不用写 Java/Python。
 
 **快速入门**：
 - 参考 `plays/driving-personality/` 或 `plays/monthly-wrapped/` 作为样板
