@@ -4,9 +4,9 @@
 
 这里的玩法已经通过了初步验证，但**不会被 bridge 默认加载**（PlayRegistry 只扫 classpath `plays/` 和可选的 `PLAYS_DIR`，不扫 `plays-incubator/`）。
 
-| 玩法 | 说明 | 状态 |
-|---|---|---|
-| `charging-procrastinator` | 充电拖延症——你放电放到多低才肯插枪（JSON only） | 候选，待 PR |
+_当前没有待升入的候选玩法——之前的候选（monthly-wrapped / night-owl / early-bird / charging-procrastinator）都已升入主线 `plays/`。_
+
+新玩法可以先放这里孵化（带 `play.yaml` + `fixtures.yaml`），通过初步验证后再按下方流程升入主线。
 
 ## 如何将一个玩法升入主线
 
