@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "jakezai250808-sudo",
+      "id": 260226935,
+      "comment_id": 4698763878,
+      "created_at": "2026-06-13T14:14:01Z",
+      "repoId": 1264694261,
+      "pullRequestNo": 2
+    }
+  ]
 }
