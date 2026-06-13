@@ -78,9 +78,19 @@ if ! docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
     -e POSTGRES_USER=teslamate -e "POSTGRES_PASSWORD=${_PG_PASS}" -e POSTGRES_DB=teslamate \
     -p "127.0.0.1:${PG_PORT}:5432" "$PG_IMAGE" >/dev/null
 fi
-for i in $(seq 1 30); do
-  docker exec "$PG_CONTAINER" pg_isready -U teslamate -d teslamate >/dev/null 2>&1 && break
-  [ "$i" = 30 ] && { echo "❌ PG 30s 未 ready，docker logs $PG_CONTAINER 排查"; exit 1; }
+# postgres 官方镜像首次启动会先起一个临时 server 跑 init 脚本，再关掉重启到正式端口。
+# pg_isready 在临时 server 阶段就会返回 ready，紧接着的 psql 可能撞上
+# "FATAL: the database system is shutting down"（init 重启窗口），在 set -e 下直接挂掉。
+# 因此不能只信第一次 pg_isready：要求连续 3 次真实 `SELECT 1` 成功，确保已越过重启窗口。
+ok=0
+for i in $(seq 1 60); do
+  if docker exec "$PG_CONTAINER" psql -U teslamate -d teslamate -tAc 'SELECT 1' >/dev/null 2>&1; then
+    ok=$((ok + 1))
+    [ "$ok" -ge 3 ] && break
+  else
+    ok=0
+  fi
+  [ "$i" = 60 ] && { echo "❌ PG 60s 未 ready，docker logs $PG_CONTAINER 排查"; exit 1; }
   sleep 1
 done
 
