@@ -28,7 +28,7 @@ over the window and award a persona. 周末里程 vs 工作日里程之比 → "
 
 `drives` only: bucket `start_date AT TIME ZONE 'UTC' AT TIME ZONE :tz` by `EXTRACT(ISODOW FROM ...)`
 (6–7 = weekend), `SUM(distance)` + `COUNT(*)` per bucket, single row via `FILTER` clauses
-(see `plays-incubator/night-owl/play.yaml` for the FILTER pattern).
+(see `plays/night-owl/play.yaml` for the FILTER pattern).
 
 ### Output sketch
 
