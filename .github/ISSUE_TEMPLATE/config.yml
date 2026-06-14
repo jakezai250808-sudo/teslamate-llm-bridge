@@ -1,0 +1,15 @@
+# Issue template chooser config
+# https://docs.github.com/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository#configuring-the-template-chooser
+
+blank_issues_enabled: true
+
+contact_links:
+  - name: 📖 Add a play in 10 minutes / 10 分钟加一个 play
+    url: https://github.com/jakezai250808-sudo/teslamate-llm-bridge/blob/main/docs/quickstart-add-a-play.md
+    about: First time contributing? The fastest path is a pure-YAML play — no Java or Python. 首次贡献？纯 YAML 加 play 最快。
+  - name: 💬 Discussions / 讨论（问答、想法）
+    url: https://github.com/jakezai250808-sudo/teslamate-llm-bridge/discussions
+    about: Questions and ideas before opening an issue. 提问、分享想法先来这。
+  - name: 🏠 Hosted demo / 托管体验版
+    url: https://tesla.shenqinqin.com
+    about: Try it without setting anything up. 免部署先体验。

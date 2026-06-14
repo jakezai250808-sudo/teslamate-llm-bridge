@@ -2,6 +2,12 @@
 
 感谢你对本项目的兴趣！欢迎贡献 plays（玩法定义）、引擎改进、文档修缮等。
 
+> **快速入口 / Quick start**
+> - 🚀 第一次贡献？加一个 play 最快：[`docs/quickstart-add-a-play.md`](docs/quickstart-add-a-play.md)（10 分钟，纯 YAML，不写 Java/Python）
+> - 🐣 新手任务：认领 [`good first issue`](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/labels/good%20first%20issue)
+> - 💬 想法 / 提问：[Discussions](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/discussions)
+> - 🤖 用 AI agent 贡献：见 [`AGENTS.md`](AGENTS.md)
+
 ---
 
 ## 贡献者许可协议（CLA）

@@ -1,7 +1,10 @@
 # teslamate-llm-bridge
 
-<!-- CI badge — replace YOUR_GITHUB with your username/org before publishing -->
-<!-- ![CI](https://github.com/YOUR_GITHUB/teslamate-llm-bridge/actions/workflows/ci.yml/badge.svg) -->
+[![CI](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/actions/workflows/ci.yml)
+[![Validate plays](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/actions/workflows/validate-plays.yml/badge.svg)](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/actions/workflows/validate-plays.yml)
+[![Release](https://img.shields.io/github/v/release/jakezai250808-sudo/teslamate-llm-bridge?include_prereleases&logo=github)](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/releases)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![good first issue](https://img.shields.io/github/issues/jakezai250808-sudo/teslamate-llm-bridge/good%20first%20issue?label=good%20first%20issue&color=7057ff)](https://github.com/jakezai250808-sudo/teslamate-llm-bridge/labels/good%20first%20issue)
 
 **Bring your Tesla to any LLM platform** — driving personality scores, monthly wrapped, charging habits, and more, from your TeslaMate data.
 
