@@ -1,0 +1,110 @@
+# ============================================================================
+# wheel-time fixtures —— CI（tools/validate_plays.py + PlayRegistryTest）
+# 覆盖全部 5 个段位分支（周末偶尔党/通勤轻度/标准打工人/资深老司机/方向盘焊手上）
+# + 1 个 unscored。每集 45min；段位阈值（分钟）300/900/1800/3000。
+# ROUND = 四舍五入到整数（half-up）。
+# ============================================================================
+
+fixtures:
+  # 方向盘焊手上（catch-all，total_min ≥ 3000）
+  # total_hours=ROUND(3600/60)=60 ; episodes=ROUND(3600/45)=80
+  # avg_min=ROUND(3600/GREATEST(80,1))=45 ; daily_avg_min=ROUND(3600/30)=120
+  - name: welded-to-the-wheel
+    window_days: 30
+    row:
+      drive_count: 80
+      total_min: 3600
+      max_min: 130
+    expect:
+      total_hours: 60
+      episodes: 80
+      avg_min: 45
+      daily_avg_min: 120
+      persona_name: "方向盘焊手上"
+      persona.name: "方向盘焊手上"
+      persona.tag: "#副业是网约车吧"
+      summary: "近 30 天你在方向盘后 60 小时（约 80 集剧）、单程最长 130 分钟、日均 120 分钟。你是「方向盘焊手上」。"
+
+  # 资深老司机（lt 3000 分支，1800 ≤ total < 3000）
+  # total_hours=ROUND(2400/60)=40 ; episodes=ROUND(2400/45)=ROUND(53.33)=53
+  # avg_min=ROUND(2400/60)=40 ; daily_avg_min=ROUND(2400/30)=80
+  - name: seasoned-driver
+    window_days: 30
+    row:
+      drive_count: 60
+      total_min: 2400
+      max_min: 110
+    expect:
+      total_hours: 40
+      episodes: 53
+      avg_min: 40
+      daily_avg_min: 80
+      persona_name: "资深老司机"
+      persona.name: "资深老司机"
+      persona.tag: "#人肉导航"
+      summary: "近 30 天你在方向盘后 40 小时（约 53 集剧）、单程最长 110 分钟、日均 80 分钟。你是「资深老司机」。"
+
+  # 标准打工人（lt 1800 分支，900 ≤ total < 1800）
+  # total_hours=ROUND(1200/60)=20 ; episodes=ROUND(1200/45)=ROUND(26.67)=27
+  # avg_min=ROUND(1200/45)=ROUND(26.67)=27 ; daily_avg_min=ROUND(1200/30)=40
+  - name: standard-commuter
+    window_days: 30
+    row:
+      drive_count: 45
+      total_min: 1200
+      max_min: 60
+    expect:
+      total_hours: 20
+      episodes: 27
+      avg_min: 27
+      daily_avg_min: 40
+      persona_name: "标准打工人"
+      persona.name: "标准打工人"
+      persona.tag: "#早晚高峰常客"
+      summary: "近 30 天你在方向盘后 20 小时（约 27 集剧）、单程最长 60 分钟、日均 40 分钟。你是「标准打工人」。"
+
+  # 通勤轻度（lt 900 分支，300 ≤ total < 900）
+  # total_hours=ROUND(600/60)=10 ; episodes=ROUND(600/45)=ROUND(13.33)=13
+  # avg_min=ROUND(600/20)=30 ; daily_avg_min=ROUND(600/30)=20
+  - name: light-commuter
+    window_days: 30
+    row:
+      drive_count: 20
+      total_min: 600
+      max_min: 50
+    expect:
+      total_hours: 10
+      episodes: 13
+      avg_min: 30
+      daily_avg_min: 20
+      persona_name: "通勤轻度"
+      persona.name: "通勤轻度"
+      persona.tag: "#佛系通勤"
+      summary: "近 30 天你在方向盘后 10 小时（约 13 集剧）、单程最长 50 分钟、日均 20 分钟。你是「通勤轻度」。"
+
+  # 周末偶尔党（lt 300 分支，total < 300）
+  # total_hours=ROUND(200/60)=ROUND(3.33)=3 ; episodes=ROUND(200/45)=ROUND(4.44)=4
+  # avg_min=ROUND(200/8)=25 ; daily_avg_min=ROUND(200/30)=ROUND(6.67)=7
+  - name: weekend-only
+    window_days: 30
+    row:
+      drive_count: 8
+      total_min: 200
+      max_min: 40
+    expect:
+      total_hours: 3
+      episodes: 4
+      avg_min: 25
+      daily_avg_min: 7
+      persona_name: "周末偶尔党"
+      persona.name: "周末偶尔党"
+      persona.tag: "#车位常驻嘉宾"
+      summary: "近 30 天你在方向盘后 3 小时（约 4 集剧）、单程最长 40 分钟、日均 7 分钟。你是「周末偶尔党」。"
+
+  # 数据不足：drive_count 3 < min_sample 5 → unscored
+  - name: insufficient-sample
+    row:
+      drive_count: 3
+      total_min: 80
+      max_min: 30
+    expect_unscored: true

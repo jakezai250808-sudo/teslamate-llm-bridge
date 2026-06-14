@@ -1,0 +1,123 @@
+# ============================================================================
+# 方向盘时长 —— 你在车里待了多久（driving-personality / altitude-climber 为格式参照）
+#
+# 维度：累加窗口内每段行程的驾驶时长（TeslaMate drives.duration_min，分钟），
+# 得到「方向盘后总时长」，换算成可晒的「几集剧」（每集 45min），并按总时长落
+# 5 档司机段位（周末偶尔党 → 方向盘焊手上）。
+#
+# 与现有玩法的区分：monthly-wrapped 把总时长作为月报里的一个数字罗列；本玩法
+# 以「时长」为唯一主轴，做段位人格 + 追剧当量 + 日均时长，是独立的晒卡玩法。
+# ============================================================================
+
+schema_version: 1
+
+name: wheel-time
+title: 方向盘时长
+emoji: "⏱️"
+
+description: >-
+  用近 30 天 TeslaMate 行车数据累加方向盘后的总驾驶时长（drives.duration_min），
+  算出总小时数（换算成「约几集剧」）、单程最长时长、日均驾驶时长，并按总时长给
+  5 档司机段位称号与自嘲标签，可生成竖版分享卡。用户问「我这个月开了多久 /
+  在车里待了多久 / 我是不是老司机 / 我方向盘时长多少」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 3 个聚合指标（恰 1 行）：drive_count / total_min / max_min。
+# duration_min 是 TeslaMate drives 表的单段行程时长（smallint，分钟）。
+# SUM/MAX 空输入返 NULL 必须 COALESCE；COUNT(*) 空集自动返 0。半开窗口。
+sql: |-
+  SELECT
+    COUNT(*) AS drive_count,
+    COALESCE(SUM(duration_min), 0) AS total_min,
+    COALESCE(MAX(duration_min), 0) AS max_min
+  FROM drives
+  WHERE car_id = :car_id
+    AND start_date >= :start
+    AND start_date < :end
+    AND duration_min IS NOT NULL
+
+min_sample:
+  field: drive_count
+  min: 5
+
+compute:
+  # 总小时数（取整）。
+  - var: total_hours
+    expr: "ROUND(total_min / 60)"
+  # 追剧当量：每集 45 分钟。
+  - var: episodes
+    expr: "ROUND(total_min / 45)"
+  # 单程平均时长（分钟）。
+  - var: avg_min
+    expr: "ROUND(total_min / GREATEST(drive_count, 1))"
+  # 日均方向盘时长（分钟/天）。
+  - var: daily_avg_min
+    expr: "ROUND(total_min / window_days)"
+
+  # 5 档司机段位（按总分钟数判档，直接输出中文称号；末项省 lt 作兜底）。
+  # 阈值（分钟）：300=5h / 900=15h / 1800=30h / 3000=50h（按 30 天窗口校准）。
+  - var: persona_name
+    level:
+      input: total_min
+      thresholds:
+        - lt: 300
+          label: "周末偶尔党"
+        - lt: 900
+          label: "通勤轻度"
+        - lt: 1800
+          label: "标准打工人"
+        - lt: 3000
+          label: "资深老司机"
+        - label: "方向盘焊手上"
+
+  - var: persona
+    lookup:
+      key: persona_name
+      table: personas
+      default:
+        name: "神秘驾驶体"
+        desc: "你的方向盘时长超出了已知五档，建议联系研究所。"
+        tag: "#待收录新物种"
+
+  - var: summary
+    template: "近 ${window_days} 天你在方向盘后 ${total_hours} 小时（约 ${episodes} 集剧）、单程最长 ${max_min} 分钟、日均 ${daily_avg_min} 分钟。你是「${persona_name}」。"
+
+tables:
+  personas:
+    "周末偶尔党":
+      name: "周末偶尔党"
+      desc: "车大多在车位上养生，你只在需要时才握方向盘。"
+      tag: "#车位常驻嘉宾"
+    "通勤轻度":
+      name: "通勤轻度"
+      desc: "两点一线但路途不长，方向盘对你是工具不是战场。"
+      tag: "#佛系通勤"
+    "标准打工人":
+      name: "标准打工人"
+      desc: "标准打工人剂量：每天都在路上，但还没到上头。"
+      tag: "#早晚高峰常客"
+    "资深老司机":
+      name: "资深老司机"
+      desc: "方向盘后的时间够你追完好几部剧，路况你门儿清。"
+      tag: "#人肉导航"
+    "方向盘焊手上":
+      name: "方向盘焊手上"
+      desc: "这个月你基本住在车里，方向盘都快焊手上了。"
+      tag: "#副业是网约车吧"
+
+output:
+  fields:
+    - { name: total_min, from: total_min, type: number }
+    - { name: total_hours, from: total_hours, type: number }
+    - { name: max_min, from: max_min, type: number }
+    - { name: avg_min, from: avg_min, type: number }
+    - { name: episodes, from: episodes, type: number }
+    - { name: daily_avg_min, from: daily_avg_min, type: number }
+    - { name: persona_name, from: persona_name, type: string }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
+    - { name: drive_count, from: drive_count, type: number }
