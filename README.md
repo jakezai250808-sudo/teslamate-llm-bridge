@@ -123,7 +123,7 @@ You need to know: `TM_DB_HOST`, `TM_DB_PORT` (default `5432`), `TM_DB_NAME` (def
 ### 1. Clone the repo / 克隆仓库
 
 ```bash
-git clone https://github.com/teslamate-llm-bridge/teslamate-llm-bridge.git
+git clone https://github.com/jakezai250808-sudo/teslamate-llm-bridge.git
 cd teslamate-llm-bridge
 ```
 

@@ -102,7 +102,7 @@ TM_DB_HOST=host.docker.internal
 ## 三、克隆仓库
 
 ```bash
-git clone https://github.com/teslamate-llm-bridge/teslamate-llm-bridge.git
+git clone https://github.com/jakezai250808-sudo/teslamate-llm-bridge.git
 cd teslamate-llm-bridge
 ```
 
