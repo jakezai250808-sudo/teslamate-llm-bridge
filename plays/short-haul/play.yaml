@@ -1,0 +1,109 @@
+# ============================================================================
+# 楼下买菜指数 —— 短途占比（driving-personality / altitude-climber 为格式参照）
+#
+# 维度：窗口内单程 < 3 公里的「短途」行程占全部行程的比例。占比越高，越是
+# 「楼下买菜战士」。区别于 weekend-warrior（按星期分）、monthly-wrapped（总量/最长）、
+# 以及 good-first-issue 里的「出行半径」（看你跑多远）——本玩法看你「短途有多频繁」。
+# ============================================================================
+
+schema_version: 1
+
+name: short-haul
+title: 楼下买菜指数
+emoji: "🛒"
+
+description: >-
+  用近 30 天 TeslaMate 行车数据算出短途（单程 < 3 公里）行程占全部行程的比例，
+  配「楼下买菜战士」式 5 档人格与自嘲标签，并给出最短一程公里数，可生成分享卡。
+  用户问「我是不是老开短途 / 楼下也开车 / 我的短途占比多少 / 我开车都跑多近」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 3 个聚合指标（恰 1 行）：drive_count / short_count（单程<3km 的行程数）/ min_km（最短一程）。
+# SUM/MIN 空输入返 NULL 必须 COALESCE；COUNT(*) 空集自动返 0。半开窗口、只看有效里程。
+sql: |-
+  SELECT
+    COUNT(*) AS drive_count,
+    COALESCE(SUM(CASE WHEN distance < 3 THEN 1 ELSE 0 END), 0) AS short_count,
+    COALESCE(MIN(distance), 0) AS min_km
+  FROM drives
+  WHERE car_id = :car_id
+    AND start_date >= :start
+    AND start_date < :end
+    AND distance IS NOT NULL
+    AND distance > 0
+
+min_sample:
+  field: drive_count
+  min: 5
+
+compute:
+  # 短途占比（%）。
+  - var: short_pct
+    expr: "ROUND(short_count * 100 / GREATEST(drive_count, 1))"
+  # 最短一程（公里，1 位小数）。
+  - var: min_km_r
+    expr: "ROUND(min_km, 1)"
+
+  # 5 档人格（按短途占比判档，直接输出中文称号；末项省 lt 作兜底）。
+  - var: persona_name
+    level:
+      input: short_pct
+      thresholds:
+        - lt: 20
+          label: "远行派"
+        - lt: 40
+          label: "均衡通勤"
+        - lt: 60
+          label: "短途常客"
+        - lt: 80
+          label: "楼下买菜战士"
+        - label: "三米也要开"
+
+  - var: persona
+    lookup:
+      key: persona_name
+      table: personas
+      default:
+        name: "神秘驾驶体"
+        desc: "你的短途占比超出了已知五档，建议联系研究所。"
+        tag: "#待收录新物种"
+
+  - var: summary
+    template: "近 ${window_days} 天你有 ${short_pct}% 的行程不到 3 公里（最短一程 ${min_km_r} 公里）。你是「${persona_name}」。"
+
+tables:
+  personas:
+    "远行派":
+      name: "远行派"
+      desc: "你的车很少跑短途，出门基本是正经远行。"
+      tag: "#没事不挪窝"
+    "均衡通勤":
+      name: "均衡通勤"
+      desc: "长短途搭配，开得挺均衡。"
+      tag: "#收放自如"
+    "短途常客":
+      name: "短途常客"
+      desc: "一半行程都是短途，方向盘常为小事而动。"
+      tag: "#随叫随到"
+    "楼下买菜战士":
+      name: "楼下买菜战士"
+      desc: "大部分行程不到 3 公里，买菜接娃全靠它。"
+      tag: "#三公里内霸主"
+    "三米也要开":
+      name: "三米也要开"
+      desc: "几乎全是短途，下楼倒个垃圾都想开两步。"
+      tag: "#步行不存在的"
+
+output:
+  fields:
+    - { name: short_pct, from: short_pct, type: number }
+    - { name: short_count, from: short_count, type: number }
+    - { name: drive_count, from: drive_count, type: number }
+    - { name: min_km, from: min_km_r, type: number }
+    - { name: persona_name, from: persona_name, type: string }
+    - { name: persona, from: persona, type: object }
+    - { name: summary, from: summary, type: string }
