@@ -3,7 +3,7 @@
 MCP (Model Context Protocol) server that exposes your TeslaMate driving data
 as AI tools. Works with Claude Desktop, Cursor, and any MCP-compatible client.
 
-Exposes 4 tools backed by the [teslamate-llm-bridge](https://github.com/teslamate-llm-bridge/teslamate-llm-bridge) HTTP API and 火山方舟 Seedream:
+Exposes 4 tools backed by the [teslamate-llm-bridge](https://github.com/jakezai250808-sudo/teslamate-llm-bridge) HTTP API and 火山方舟 Seedream:
 
 | Tool | Description |
 |---|---|
