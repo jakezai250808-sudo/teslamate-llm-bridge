@@ -1,0 +1,92 @@
+# ============================================================================
+# short-haul fixtures —— CI（tools/validate_plays.py + PlayRegistryTest）
+# 覆盖全部 5 档（远行派/均衡通勤/短途常客/楼下买菜战士/三米也要开）+ 1 unscored。
+# short_pct = ROUND(short_count*100/GREATEST(drive_count,1))；ROUND=四舍五入(half-up)。
+# ============================================================================
+
+fixtures:
+  # 三米也要开（catch-all，short_pct ≥ 80）
+  # short_pct=ROUND(36*100/40)=90 ; min_km_r=ROUND(0.4,1)=0.4
+  - name: drives-three-meters
+    window_days: 30
+    row:
+      drive_count: 40
+      short_count: 36
+      min_km: 0.4
+    expect:
+      short_pct: 90
+      min_km_r: 0.4
+      persona_name: "三米也要开"
+      persona.name: "三米也要开"
+      persona.tag: "#步行不存在的"
+      summary: "近 30 天你有 90% 的行程不到 3 公里（最短一程 0.4 公里）。你是「三米也要开」。"
+
+  # 楼下买菜战士（lt 80 分支，60 ≤ short_pct < 80）
+  # short_pct=ROUND(35*100/50)=70 ; min_km_r=0.6
+  - name: grocery-warrior
+    window_days: 30
+    row:
+      drive_count: 50
+      short_count: 35
+      min_km: 0.6
+    expect:
+      short_pct: 70
+      min_km_r: 0.6
+      persona_name: "楼下买菜战士"
+      persona.name: "楼下买菜战士"
+      persona.tag: "#三公里内霸主"
+      summary: "近 30 天你有 70% 的行程不到 3 公里（最短一程 0.6 公里）。你是「楼下买菜战士」。"
+
+  # 短途常客（lt 60 分支，40 ≤ short_pct < 60）
+  # short_pct=ROUND(20*100/40)=50 ; min_km_r=0.9
+  - name: short-trip-regular
+    window_days: 30
+    row:
+      drive_count: 40
+      short_count: 20
+      min_km: 0.9
+    expect:
+      short_pct: 50
+      min_km_r: 0.9
+      persona_name: "短途常客"
+      persona.name: "短途常客"
+      summary: "近 30 天你有 50% 的行程不到 3 公里（最短一程 0.9 公里）。你是「短途常客」。"
+
+  # 均衡通勤（lt 40 分支，20 ≤ short_pct < 40）
+  # short_pct=ROUND(12*100/40)=30 ; min_km_r=1.5
+  - name: balanced
+    window_days: 30
+    row:
+      drive_count: 40
+      short_count: 12
+      min_km: 1.5
+    expect:
+      short_pct: 30
+      min_km_r: 1.5
+      persona_name: "均衡通勤"
+      persona.name: "均衡通勤"
+      summary: "近 30 天你有 30% 的行程不到 3 公里（最短一程 1.5 公里）。你是「均衡通勤」。"
+
+  # 远行派（lt 20 分支，short_pct < 20）
+  # short_pct=ROUND(4*100/40)=10 ; min_km_r=2.8
+  - name: long-hauler
+    window_days: 30
+    row:
+      drive_count: 40
+      short_count: 4
+      min_km: 2.8
+    expect:
+      short_pct: 10
+      min_km_r: 2.8
+      persona_name: "远行派"
+      persona.name: "远行派"
+      persona.tag: "#没事不挪窝"
+      summary: "近 30 天你有 10% 的行程不到 3 公里（最短一程 2.8 公里）。你是「远行派」。"
+
+  # 数据不足：drive_count 3 < min_sample 5 → unscored
+  - name: insufficient-sample
+    row:
+      drive_count: 3
+      short_count: 2
+      min_km: 1.0
+    expect_unscored: true
