@@ -27,5 +27,9 @@ jobs:
         with:
           path-to-document: 'https://github.com/jakezai250808-sudo/teslamate-llm-bridge/blob/main/CLA.md'
           path-to-signatures: 'signatures/version1/cla.json'
-          branch: 'main'
+          # 签名存在非保护分支 cla-signatures：main 开了 branch protection
+          # (required status checks)，会挡掉 bot 直接 push 签名到 main，导致
+          # CLAAssistant check 在贡献者 PR 上永远 fail。cla-signatures 不受保护，
+          # bot 可正常持久化签名。cla.json 已从 main 迁移到该分支。
+          branch: 'cla-signatures'
           allowlist: dependabot[bot],bot*,*[bot]
