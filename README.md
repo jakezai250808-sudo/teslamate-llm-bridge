@@ -123,6 +123,18 @@ You need to know: `TM_DB_HOST`, `TM_DB_PORT` (default `5432`), `TM_DB_NAME` (def
 
 你需要知道：`TM_DB_HOST`、`TM_DB_PORT`（默认 `5432`）、`TM_DB_NAME`（默认 `teslamate`）、`TM_DB_USER`（默认 `teslamate`）、`TM_DB_PASS`，以及你的车在 TeslaMate 中的 `car_id`（对 TeslaMate DB 执行 `SELECT id, name FROM cars;` 查询获取）。
 
+> 🔒 **Recommended: connect with a restricted read-only role.** The bridge only
+> ever runs read-only queries, so create a dedicated PostgreSQL role that can read
+> your driving data but **cannot** read TeslaMate's `tokens` table (your encrypted
+> Tesla credentials). Run [`docs/teslamate-readonly-role.sql`](docs/teslamate-readonly-role.sql),
+> then point `TM_DB_USER` / `TM_DB_PASS` at the new role instead of the default
+> `teslamate` superuser. See [docs/install-existing-teslamate.md](docs/install-existing-teslamate.md#推荐受限只读账号).
+>
+> 🔒 **推荐：用受限只读账号连库。** bridge 只做只读查询，建议新建一个专用
+> PostgreSQL 角色，只能读行车数据、**读不到** TeslaMate 的 `tokens` 表（你的加密
+> Tesla 凭据）。执行 [`docs/teslamate-readonly-role.sql`](docs/teslamate-readonly-role.sql)，
+> 然后把 `TM_DB_USER` / `TM_DB_PASS` 指向新角色，而不是默认的 `teslamate` 超级用户。
+
 ### 1. Clone the repo / 克隆仓库
 
 ```bash
@@ -142,7 +154,7 @@ Edit `.env` / 编辑 `.env`：
 TM_DB_HOST=localhost          # hostname of your TeslaMate PostgreSQL
 TM_DB_PORT=5432
 TM_DB_NAME=teslamate
-TM_DB_USER=teslamate
+TM_DB_USER=teslamate          # recommend a restricted read-only role — see docs/teslamate-readonly-role.sql
 TM_DB_PASS=your_pg_password
 
 # Optional: restrict to specific car IDs (comma-separated TeslaMate car IDs).
