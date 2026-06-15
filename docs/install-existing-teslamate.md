@@ -122,7 +122,7 @@ TM_DB_HOST=172.17.0.1
 
 TM_DB_PORT=5432          # 宿主机映射出来的端口，不是容器内端口
 TM_DB_NAME=teslamate
-TM_DB_USER=teslamate
+TM_DB_USER=teslamate     # 推荐改成受限只读账号，见下方
 TM_DB_PASS=<TeslaMate PG 密码>   # 必填
 
 # 可选：逗号分隔，限定暴露哪些 car_id
@@ -131,6 +131,41 @@ CAR_IDS=1
 # 可选：公网暴露时强烈建议设置 Bearer token
 API_TOKEN=
 ```
+
+---
+
+## 推荐：受限只读账号
+
+bridge 对 TeslaMate 数据库**只做只读查询**——每个 play 的 SQL 都经过静态守卫，拒绝
+一切写操作（无 `INSERT/UPDATE/DELETE/DDL`、无多语句）。因此强烈建议**不要用默认的
+`teslamate` 超级用户连库**，而是新建一个专用的最小权限只读角色：它能读行车数据，但
+**读不到你的 Tesla 凭据**。这样即使 bridge 出 bug、配置失误或加载了恶意 play，也碰不到
+你的凭据、改不了任何数据。
+
+> TeslaMate 把加密的 Tesla access/refresh token 存在 **`private.tokens`**（独立的
+> `private` schema）。脚本只给新角色授予 `public` schema 的 `USAGE`、**不授予
+> `private`**——所以它根本进不到 `tokens` 所在的 schema，再叠加 `public` 下逐表
+> 白名单，双重隔离。
+
+仓库提供了开箱即用的脚本 [`teslamate-readonly-role.sql`](teslamate-readonly-role.sql)，
+用 TeslaMate DB 的超级用户执行一次：
+
+```bash
+psql -U teslamate -d teslamate -f docs/teslamate-readonly-role.sql
+```
+
+它会建一个 `teslamate_bridge` 角色，只 `GRANT SELECT` 当前 play 库用到的数据表
+（`cars / drives / charging_processes / positions`），**显式不授予 `tokens`**。改完密码后，
+把 `.env` 里的 `TM_DB_USER` / `TM_DB_PASS` 指向这个新角色即可。
+
+> 验证（输出里**不应**出现 `tokens`）：
+> ```sql
+> SELECT table_name FROM information_schema.role_table_grants
+> WHERE grantee = 'teslamate_bridge' ORDER BY table_name;
+> ```
+>
+> 之后若新增的 play 用到其它数据表（如 `charges / addresses / geofences`），对这些表补
+> `GRANT SELECT` 即可——唯一铁律：**永远不要给 `tokens` 授权**。
 
 ---
 

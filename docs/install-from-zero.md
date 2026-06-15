@@ -151,7 +151,7 @@ TM_DB_HOST=172.17.0.1        # ← 改这里！不要留 localhost
 
 TM_DB_PORT=5432
 TM_DB_NAME=teslamate
-TM_DB_USER=teslamate
+TM_DB_USER=teslamate     # 推荐改成受限只读账号，见 3.2 下方
 TM_DB_PASS=<TeslaMate PG 的密码>   # ← 必填
 
 # 可选：限定只暴露哪几台车的数据（逗号分隔的 car_id）
@@ -167,6 +167,12 @@ API_TOKEN=
 ip addr show docker0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1
 # 通常返回 172.17.0.1 或 172.18.0.1
 ```
+
+> 🔒 **推荐：用受限只读账号连库（强烈建议）。** bridge 只做只读查询，别用默认的
+> `teslamate` 超级用户。执行 [`docs/teslamate-readonly-role.sql`](teslamate-readonly-role.sql)
+> 建一个最小权限只读角色——能读行车数据、**读不到 `tokens` 表**（你的加密 Tesla 凭据），
+> 然后把 `TM_DB_USER` / `TM_DB_PASS` 指向它。详见
+> [install-existing-teslamate.md 的「受限只读账号」](install-existing-teslamate.md#推荐受限只读账号)。
 
 ### 3.3 启动 bridge（方案一：docker compose，推荐）
 
