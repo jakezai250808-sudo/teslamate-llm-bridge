@@ -1,0 +1,150 @@
+# ============================================================================
+# Play fixtures for punch-king.
+# Each fixture feeds a fake SQL result row through min_sample + the compute
+# pipeline and asserts the resulting vars. Expected values are hand-computed
+# from play.yaml — see docs/play-manifest-spec.md §8.
+# ============================================================================
+
+fixtures:
+  # ---- Tier 1: 全油门战士 (p5, catch-all) ----
+  - name: full-send-warrior
+    window_days: 30
+    row:
+      total_drives: 30
+      peak_power: 380
+      chill_drives: 2
+      normal_drives: 4
+      punch_drives: 12
+      full_send_drives: 12
+      avg_power: 215.3
+    expect:
+      # punch_ratio = ROUND((12+12)*100/30) = ROUND(80.0) = 80
+      punch_ratio: 80
+      # full_send_ratio = ROUND(12*100/30) = ROUND(40.0) = 40
+      full_send_ratio: 40
+      # punch_score = LEAST(100, ROUND(80*2 + (380-150)/4 + 40*5))
+      #   = LEAST(100, ROUND(160 + 57.5 + 200)) = LEAST(100, ROUND(417.5))
+      #   = LEAST(100, 418) = 100
+      punch_score: 100
+      punch_band: p5
+      persona.name: "全油门战士"
+      persona.tag: "#Plaid模式是默认模式"
+      peak_power_r: 380
+      avg_power_r: 215   # ROUND(215.3) = 215
+
+  # ---- Tier 2: 动力上瘾患者 (p4, lt:85) ----
+  - name: power-addict
+    window_days: 30
+    row:
+      total_drives: 40
+      peak_power: 200
+      chill_drives: 12
+      normal_drives: 17
+      punch_drives: 10
+      full_send_drives: 1
+      avg_power: 116.2
+    expect:
+      # punch_ratio = ROUND((10+1)*100/40) = ROUND(27.5) = 28
+      punch_ratio: 28
+      # full_send_ratio = ROUND(1*100/40) = ROUND(2.5) = 3
+      full_send_ratio: 3
+      # punch_score = ROUND(28*2 + (200-150)/4 + 3*5)
+      #   = ROUND(56 + 12.5 + 15) = ROUND(83.5) = 84
+      # 84 → p4 (lt:85, ≥60). Good!
+      punch_score: 84
+      punch_band: p4
+      persona.name: "动力上瘾患者"
+      persona.tag: "#轮胎店年度VIP"
+      peak_power_r: 200
+      avg_power_r: 116   # ROUND(116.2) = 116
+
+  # ---- Tier 3: 推背感爱好者 (p3, lt:60) ----
+  - name: thrill-seeker
+    window_days: 30
+    row:
+      total_drives: 50
+      peak_power: 170
+      chill_drives: 18
+      normal_drives: 22
+      punch_drives: 10
+      full_send_drives: 0
+      avg_power: 91.6
+    expect:
+      # punch_ratio = ROUND((10+0)*100/50) = ROUND(20.0) = 20
+      punch_ratio: 20
+      # full_send_ratio = ROUND(0*100/50) = 0
+      full_send_ratio: 0
+      # punch_score = ROUND(20*2 + (170-150)/4 + 0*5)
+      #   = ROUND(40 + 5 + 0) = ROUND(45) = 45
+      # 45 → p3 (lt:60, ≥35). Good!
+      punch_score: 45
+      punch_band: p3
+      persona.name: "推背感爱好者"
+      persona.tag: "#红绿灯起步从不输"
+      peak_power_r: 170
+      avg_power_r: 92   # ROUND(91.6) = 92
+
+  # ---- Tier 4: 理性驾驶者 (p2, lt:35) ----
+  - name: rational-driver
+    window_days: 30
+    row:
+      total_drives: 30
+      peak_power: 153
+      chill_drives: 14
+      normal_drives: 12
+      punch_drives: 4
+      full_send_drives: 0
+      avg_power: 78.5
+    expect:
+      # punch_ratio = ROUND((4+0)*100/30) = ROUND(13.33) = 13
+      punch_ratio: 13
+      # full_send_ratio = ROUND(0*100/30) = 0
+      full_send_ratio: 0
+      # punch_score = ROUND(13*2 + (153-150)/4 + 0*5)
+      #   = ROUND(26 + 0.75 + 0) = ROUND(26.75) = 27
+      # 27 → p2 (lt:35, ≥12). Good!
+      punch_score: 27
+      punch_band: p2
+      persona.name: "理性驾驶者"
+      persona.tag: "#黄金右脚认证"
+      peak_power_r: 153
+      avg_power_r: 79   # ROUND(78.5) = 79
+
+  # ---- Tier 5: 佛系滑行家 (p1, lt:12) ----
+  - name: zen-glider
+    window_days: 30
+    row:
+      total_drives: 25
+      peak_power: 130
+      chill_drives: 18
+      normal_drives: 6
+      punch_drives: 1
+      full_send_drives: 0
+      avg_power: 55.2
+    expect:
+      # punch_ratio = ROUND((1+0)*100/25) = ROUND(4.0) = 4
+      punch_ratio: 4
+      # full_send_ratio = ROUND(0*100/25) = 0
+      full_send_ratio: 0
+      # punch_score = ROUND(4*2 + GREATEST(130-150,0)/4 + 0*5)
+      #   = ROUND(8 + 0/4 + 0) = ROUND(8) = 8
+      #   (GREATEST(-20,0)=0 because peak_power < 150)
+      # 8 → p1 (lt:12). Good!
+      punch_score: 8
+      punch_band: p1
+      persona.name: "佛系滑行家"
+      persona.tag: "#续航榜常年霸榜选手"
+      peak_power_r: 130
+      avg_power_r: 55   # ROUND(55.2) = 55
+
+  # ---- Unscored: 低于 min_sample ----
+  - name: too-few-drives
+    row:
+      total_drives: 2
+      peak_power: 200
+      chill_drives: 0
+      normal_drives: 1
+      punch_drives: 1
+      full_send_drives: 0
+      avg_power: 140.0
+    expect_unscored: true   # total_drives 2 < min_sample.min 5
