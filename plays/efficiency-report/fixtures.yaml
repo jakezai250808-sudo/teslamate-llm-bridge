@@ -156,3 +156,70 @@ fixtures:
       baseline_wh_per_km: 140.0
       raw_wh_per_km: 130.0
     expect_unscored: true
+
+  # 场景：车辆启动 5 次但从未移动（如在车内吹空调），SQL 过滤了 distance>0，drive_count 仅统计有效行程
+  # 但假设边界穿透，SQL 返回 total_km=0, raw_wh_per_km=0 (CASE WHEN total_km>0 ELSE 0)
+  # actual_wh_km = ROUND(0) = 0
+  # baseline = ROUND(140) = 140
+  # delta_wh_km = 0 - 140 = -140
+  # efficiency_ratio = LEAST(200, ROUND(0 * 100 / GREATEST(140, 1))) = 0 → 0 < 70 → grade S
+  # delta_kwh_per_100km = ROUND(-140 * 100 / 1000, 2) = -14.0
+  # delta_cost_per_100km = ROUND(-14.0 * 65 / 100, 2) = -9.1
+  # period_delta_cost = ROUND(-9.1 * 0 / 100, 1) = 0.0
+  # bar_actual_px = LEAST(540, ROUND(0 * 540 / 200)) = 0
+  - name: zero-km-division-by-zero-risk
+    window_days: 30
+    row:
+      drive_count: 5
+      total_km: 0.0
+      total_drive_min: 60
+      charge_sessions: 2
+      total_kwh_charged: 10.0
+      baseline_wh_per_km: 140.0
+      raw_wh_per_km: 0.0
+    expect:
+      actual_wh_km: 0
+      baseline: 140
+      delta_wh_km: -140
+      efficiency_ratio: 0
+      delta_kwh_per_100km: -14.0
+      delta_cost_per_100km: -9.1
+      period_delta_cost: 0.0
+      bar_actual_px: 0
+      bar_baseline_px: 270
+      grade_key: "S"
+      grade_info.title: "能效天花板"
+      grade_info.tag: "#电表都不好意思转"
+      grade_info.color: "#00e5a0"
+      summary: "近 30 天实际 0 Wh/km（基准 140 Wh/km），效率比 0%，每百公里 -9.1 元差价，本期合计 0 元。"
+
+  # 场景：刚提车，数据库无任何行程与充电记录，SQL 聚合全为 0
+  # actual_wh_km = 0, baseline = 140
+  # efficiency_ratio = 0 → grade F
+  # delta_wh_km = -140, delta_kwh_per_100km = -14.0
+  # delta_cost_per_100km = -9.1
+  # period_delta_cost = ROUND(-9.1 * 0 / 100, 1) = 0.0
+  - name: empty-window-brand-new-car
+    window_days: 30
+    row:
+      drive_count: 0
+      total_km: 0.0
+      total_drive_min: 0
+      charge_sessions: 0
+      total_kwh_charged: 0.0
+      baseline_wh_per_km: 140.0
+      raw_wh_per_km: 0.0
+    expect_unscored: true
+
+  # 场景：仅有过一次行程，不满足评分样本量，触发 unscored 保护
+  - name: single-drive
+    window_days: 30
+    row:
+      drive_count: 1
+      total_km: 15.0
+      total_drive_min: 30
+      charge_sessions: 1
+      total_kwh_charged: 2.5
+      baseline_wh_per_km: 140.0
+      raw_wh_per_km: 166.67
+    expect_unscored: true
