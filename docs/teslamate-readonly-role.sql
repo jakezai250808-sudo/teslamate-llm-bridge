@@ -7,10 +7,11 @@
 -- dedicated read-only role is defense in depth: even a bug, a misconfiguration,
 -- or a malicious play cannot modify data or read your Tesla credentials.
 --
--- TeslaMate stores your encrypted Tesla access/refresh tokens in `private.tokens`
--- (schema `private`). This role is granted USAGE on the `public` schema ONLY —
--- never on `private` — so it cannot even reach the tokens table, on top of the
--- explicit per-table allowlist below.
+-- The key property: this role is granted SELECT on a small, explicit allowlist
+-- of data tables only — it is NEVER granted the `tokens` table that stores your
+-- encrypted Tesla access/refresh credentials, regardless of which schema your
+-- TeslaMate version keeps it in (older versions: `public.tokens`; current
+-- versions: `private.tokens`).
 --
 -- Run this once, as a TeslaMate DB superuser/owner, e.g.:
 --   psql -U teslamate -d teslamate -f docs/teslamate-readonly-role.sql
@@ -19,12 +20,15 @@
 -- 1. Create the login role. CHANGE THE PASSWORD before running.
 CREATE ROLE teslamate_bridge WITH LOGIN PASSWORD 'change-me-please';
 
--- 2. Allow it to connect, and to use the PUBLIC schema only (NOT `private`).
+-- 2. Allow it to connect and to use the public schema (where the data tables live).
 GRANT CONNECT ON DATABASE teslamate TO teslamate_bridge;
 GRANT USAGE  ON SCHEMA   public     TO teslamate_bridge;
---   (No USAGE on schema `private` → `private.tokens` is unreachable.)
 
--- 3. Grant SELECT ONLY on the public data tables the current play library reads.
+-- 3. Grant SELECT ONLY on the specific data tables the current play library reads.
+--    Note we never GRANT the `tokens` table — that is what keeps your credentials
+--    out of reach. Do NOT use `GRANT SELECT ON ALL TABLES IN SCHEMA public`:
+--    on TeslaMate versions that keep `tokens` in the public schema that would
+--    expose your credentials. List tables explicitly instead.
 GRANT SELECT ON
     public.cars,
     public.drives,
@@ -33,22 +37,17 @@ GRANT SELECT ON
 TO teslamate_bridge;
 
 -- If you add plays that query other TeslaMate data tables (e.g. charges,
--- addresses, geofences), grant SELECT on those too, for example:
+-- addresses, geofences), add them to the allowlist, for example:
 --   GRANT SELECT ON public.charges, public.addresses, public.geofences TO teslamate_bridge;
+-- The one rule: never grant any access to `tokens`.
 
--- ---------------------------------------------------------------------------
--- Alternative (convenience over strictness): grant read on EVERY table in the
--- public schema. New plays then work without re-granting. This is still safe
--- with respect to your credentials, because the tokens table lives in the
--- separate `private` schema, which this role has no USAGE on:
---
---   GRANT SELECT ON ALL TABLES IN SCHEMA public TO teslamate_bridge;
---
--- Prefer the explicit allowlist above if you want the tightest possible grant.
--- ---------------------------------------------------------------------------
+-- On current TeslaMate, `tokens` lives in the separate `private` schema, and
+-- this role is given no USAGE on `private` — so the tokens table is doubly out
+-- of reach (no schema access + not in the allowlist). The explicit allowlist
+-- above is what protects you on every version, including older ones where
+-- `tokens` is in `public`.
 
--- Verify what the role can read — only the public data tables should appear,
--- and nothing from the `private` schema:
+-- Verify what the role can read — `tokens` must NOT appear in the output:
 --   SELECT table_schema, table_name
 --   FROM information_schema.role_table_grants
 --   WHERE grantee = 'teslamate_bridge'

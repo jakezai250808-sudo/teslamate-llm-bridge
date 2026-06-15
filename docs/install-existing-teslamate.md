@@ -138,14 +138,15 @@ API_TOKEN=
 
 bridge 对 TeslaMate 数据库**只做只读查询**——每个 play 的 SQL 都经过静态守卫，拒绝
 一切写操作（无 `INSERT/UPDATE/DELETE/DDL`、无多语句）。因此强烈建议**不要用默认的
-`teslamate` 超级用户连库**，而是新建一个专用的最小权限只读角色：它能读行车数据，但
-**读不到你的 Tesla 凭据**。这样即使 bridge 出 bug、配置失误或加载了恶意 play，也碰不到
-你的凭据、改不了任何数据。
+全权 `teslamate` 账号连库**，而是新建一个专用的最小权限只读角色：它**只被授予具体几张
+行车数据表的 `SELECT`，从不授予 `tokens` 表**（存放你加密的 Tesla access/refresh 凭据）。
+这样即使 bridge 出 bug、配置失误或加载了恶意 play，也读不到你的凭据、改不了任何数据。
 
-> TeslaMate 把加密的 Tesla access/refresh token 存在 **`private.tokens`**（独立的
-> `private` schema）。脚本只给新角色授予 `public` schema 的 `USAGE`、**不授予
-> `private`**——所以它根本进不到 `tokens` 所在的 schema，再叠加 `public` 下逐表
-> 白名单，双重隔离。
+> 核心是「**显式表级白名单 + 永不授 `tokens`**」——无论你的 TeslaMate 版本把 `tokens`
+> 放在哪个 schema（老版本在 `public.tokens`，当前版本在 `private.tokens`）都安全。
+> ⚠️ **不要用 `GRANT SELECT ON ALL TABLES IN SCHEMA public`**：老版本会把 `public.tokens`
+> 一起授出去，泄露凭据。当前版本里 `tokens` 在独立的 `private` schema、本角色不被授予
+> `private` 的 `USAGE`，等于又多一层——但保护你的根本是上面的显式白名单。
 
 仓库提供了开箱即用的脚本 [`teslamate-readonly-role.sql`](teslamate-readonly-role.sql)，
 用 TeslaMate DB 的超级用户执行一次：
