@@ -1,0 +1,110 @@
+# ============================================================================
+# Play fixtures for g-force-hunter.
+# ============================================================================
+
+fixtures:
+  # ---- Tier 1: G值收割机 (g4, catch-all, max_g ≥ 0.8) ----
+  - name: g-reaper
+    window_days: 30
+    row:
+      total_drives: 40
+      peak_power: 350
+      strong_drives: 20
+      extreme_drives: 8
+      avg_power: 180.5
+    expect:
+      # max_g = ROUND(350/350*100)/100 = ROUND(100.0)/100 = 100/100 = 1.00
+      max_g: 1.00
+      # g_score = LEAST(100, ROUND(1.00*100)) = 100
+      g_score: 100
+      # strong_ratio = ROUND(20*100/40) = ROUND(50.0) = 50
+      strong_ratio: 50
+      # extreme_ratio = ROUND(8*100/40) = ROUND(20.0) = 20
+      extreme_ratio: 20
+      g_band: g4
+      persona.name: "G值收割机"
+      persona.tag: "#地球引力不太够用"
+      peak_power_r: 350
+      avg_power_r: 181   # ROUND(180.5) = 181
+
+  # ---- Tier 2: 推背常客 (g3, lt:0.8) ----
+  - name: pushback-regular
+    window_days: 30
+    row:
+      total_drives: 50
+      peak_power: 250
+      strong_drives: 15
+      extreme_drives: 2
+      avg_power: 120.3
+    expect:
+      # max_g = ROUND(250/350*100)/100 = ROUND(71.43)/100 = 71/100 = 0.71
+      max_g: 0.71
+      # g_score = LEAST(100, ROUND(0.71*100)) = 71
+      g_score: 71
+      # strong_ratio = ROUND(15*100/50) = ROUND(30.0) = 30
+      strong_ratio: 30
+      # extreme_ratio = ROUND(2*100/50) = ROUND(4.0) = 4
+      extreme_ratio: 4
+      g_band: g3
+      persona.name: "推背常客"
+      persona.tag: "#推背感是刚需不是奢侈"
+      peak_power_r: 250
+      avg_power_r: 120   # ROUND(120.3) = 120
+
+  # ---- Tier 3: 轻推背体验者 (g2, lt:0.55) ----
+  - name: gentle-push
+    window_days: 30
+    row:
+      total_drives: 30
+      peak_power: 175
+      strong_drives: 5
+      extreme_drives: 0
+      avg_power: 85.2
+    expect:
+      # max_g = ROUND(175/350*100)/100 = ROUND(50.0)/100 = 50/100 = 0.50
+      max_g: 0.50
+      # g_score = LEAST(100, ROUND(0.50*100)) = 50
+      g_score: 50
+      # strong_ratio = ROUND(5*100/30) = ROUND(16.67) = 17
+      strong_ratio: 17
+      # extreme_ratio = ROUND(0*100/30) = 0
+      extreme_ratio: 0
+      g_band: g2
+      persona.name: "轻推背体验者"
+      persona.tag: "#红绿灯起步偶尔认真"
+      peak_power_r: 175
+      avg_power_r: 85   # ROUND(85.2) = 85
+
+  # ---- Tier 4: 棉花糖右脚 (g1, lt:0.3) ----
+  - name: marshmallow-foot
+    window_days: 30
+    row:
+      total_drives: 20
+      peak_power: 90
+      strong_drives: 0
+      extreme_drives: 0
+      avg_power: 55.0
+    expect:
+      # max_g = ROUND(90/350*100)/100 = ROUND(25.71)/100 = 26/100 = 0.26
+      max_g: 0.26
+      # g_score = LEAST(100, ROUND(0.26*100)) = 26
+      g_score: 26
+      # strong_ratio = ROUND(0*100/20) = 0
+      strong_ratio: 0
+      # extreme_ratio = 0
+      extreme_ratio: 0
+      g_band: g1
+      persona.name: "棉花糖右脚"
+      persona.tag: "#续航是我唯一的追求"
+      peak_power_r: 90
+      avg_power_r: 55   # ROUND(55.0) = 55
+
+  # ---- Unscored: 低于 min_sample ----
+  - name: too-few-drives
+    row:
+      total_drives: 3
+      peak_power: 200
+      strong_drives: 1
+      extreme_drives: 0
+      avg_power: 120.0
+    expect_unscored: true   # total_drives 3 < min_sample.min 5

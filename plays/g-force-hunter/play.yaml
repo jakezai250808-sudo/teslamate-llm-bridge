@@ -1,0 +1,130 @@
+# ============================================================================
+# Play: g-force-hunter — 推背 G 值猎人
+#
+# 用 drives.power_max 估算最强推背 G 值（简化模型：G ≈ peak_power/350），
+# 配四档 G 值人格 + 自嘲标签。梗感维度——「最强一脚把你按进座椅 X G」。
+# 与 punch-king 互补：punch-king 是频率维度，本 play 是峰值强度维度。
+# ============================================================================
+
+schema_version: 1
+
+name: g-force-hunter
+title: "推背G值猎人"
+emoji: "🚀"
+
+description: >-
+  用行程峰值功率估算最大推背 G 值（简化模型：G ≈ peak_power_kW / 350），
+  配四档 G 值人格与自嘲 tag。用户问「推背感多强 / G值 / 加速猛不猛 /
+  最强一脚」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 取最高功率行程 + 功率分布，聚合成一行。
+sql: |-
+  WITH d AS (
+    SELECT
+      power_max
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND distance > 0
+      AND power_max IS NOT NULL
+  )
+  SELECT
+    COUNT(*) AS total_drives,
+    COALESCE(MAX(power_max), 0) AS peak_power,
+    COUNT(*) FILTER (WHERE power_max >= 200) AS strong_drives,
+    COUNT(*) FILTER (WHERE power_max >= 300) AS extreme_drives,
+    COALESCE(ROUND(AVG(power_max)::numeric, 1), 0) AS avg_power
+  FROM d
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 估算最大 G 值（简化模型：G ≈ peak_power_kW / 350）
+  # 300kW → 0.86G，200kW → 0.57G，100kW → 0.29G
+  - var: max_g
+    expr: "ROUND(peak_power / 350 * 100) / 100"
+
+  # 推背指数 0-100：max_g * 100（1.0G = 满分）
+  - var: g_score
+    expr: "LEAST(100, ROUND(max_g * 100))"
+
+  # 强力行程占比（200+ kW）
+  - var: strong_ratio
+    expr: "ROUND(strong_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 极限行程占比（300+ kW）
+  - var: extreme_ratio
+    expr: "ROUND(extreme_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 展示用
+  - var: peak_power_r
+    expr: "ROUND(peak_power)"
+
+  - var: avg_power_r
+    expr: "ROUND(avg_power)"
+
+  # 四档 G 值人格判定
+  - var: g_band
+    level:
+      input: max_g
+      thresholds:
+        - { lt: 0.3, label: g1 }
+        - { lt: 0.55, label: g2 }
+        - { lt: 0.8, label: g3 }
+        - { label: g4 }
+
+  # 人格查表
+  - var: persona
+    lookup:
+      key: g_band
+      table: g_personas
+      default:
+        name: "神秘加速度体"
+        desc: "你的 G 值数据超出了已知分类体系。"
+        tag: "#加速度计在思考人生"
+
+  # 条形宽度
+  - var: bar_width
+    expr: "g_score * 540 / 100"
+
+  - var: summary
+    template: "近 ${window_days} 天最强推背 ${max_g}G：峰值 ${peak_power_r}kW、${strong_ratio}% 行程超 200kW。你是「${persona.name}」。"
+
+tables:
+  g_personas:
+    g1:
+      name: "棉花糖右脚"
+      desc: "你的电门踩下去像踩在棉花糖上，推背感约等于超市手推车。"
+      tag: "#续航是我唯一的追求"
+    g2:
+      name: "轻推背体验者"
+      desc: "偶尔踩深一点，推背感是通勤路上的小惊喜。"
+      tag: "#红绿灯起步偶尔认真"
+    g3:
+      name: "推背常客"
+      desc: "你的座椅靠背磨损程度是方向盘的两倍。"
+      tag: "#推背感是刚需不是奢侈"
+    g4:
+      name: "G值收割机"
+      desc: "你开车像在刷 G 值成就，座椅靠背已经记住了你的脊椎曲线。"
+      tag: "#地球引力不太够用"
+
+output:
+  fields:
+    - { name: max_g,         from: max_g,         type: number }
+    - { name: g_score,       from: g_score,       type: number }
+    - { name: persona,       from: persona,       type: object }
+    - { name: summary,       from: summary,       type: string }
+    - { name: peak_power,    from: peak_power_r,  type: number }
+    - { name: avg_power,     from: avg_power_r,   type: number }
+    - { name: strong_ratio,  from: strong_ratio,  type: number }
+    - { name: extreme_ratio, from: extreme_ratio, type: number }
+    - { name: total_drives,  from: total_drives,  type: number }
