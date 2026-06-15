@@ -1,0 +1,147 @@
+# ============================================================================
+# Play: punch-king — 地板电王者
+#
+# 用 drives.power_max 分布算出 0-100 地板电指数：
+#   高功率占比(≥150kW) × 2 + 峰值功率溢出/4 + 全油门占比(≥250kW) × 5
+# 五档人格 + 自嘲标签，全新维度（未与现有 play 撞车）。
+# 与 driving-personality 的 vigor 轴互补：vigor 是综合分（地板电+均速），
+# 本 play 是纯 punch 频率——动力党的专精维度。
+# ============================================================================
+
+schema_version: 1
+
+name: punch-king
+title: "地板电王者"
+emoji: "⚡"
+
+description: >-
+  统计窗口内行程 power_max 分布，算 0-100 地板电指数：
+  高功率占比(≥150kW)权重2 + 峰值溢出/4 + 全油门占比(≥250kW)权重5，
+  配五档人格标签与自嘲 tag。用户问「我踩地板电多吗 / 动力猛不猛 /
+  推背感 / 功率」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 按 power_max 分四桶：chill(<100) / normal(100-149) / punch(150-249) / full-send(250+)
+# 取最高功率 + 平均功率，聚合成一行。
+sql: |-
+  WITH d AS (
+    SELECT
+      power_max,
+      distance
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND distance > 0
+      AND power_max IS NOT NULL
+  )
+  SELECT
+    COUNT(*) AS total_drives,
+    COALESCE(MAX(power_max), 0) AS peak_power,
+    COUNT(*) FILTER (WHERE power_max < 100) AS chill_drives,
+    COUNT(*) FILTER (WHERE power_max >= 100 AND power_max < 150) AS normal_drives,
+    COUNT(*) FILTER (WHERE power_max >= 150 AND power_max < 250) AS punch_drives,
+    COUNT(*) FILTER (WHERE power_max >= 250) AS full_send_drives,
+    COALESCE(ROUND(AVG(power_max)::numeric, 1), 0) AS avg_power
+  FROM d
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 高功率行程占比（150+ kW）
+  - var: punch_ratio
+    expr: "ROUND((punch_drives + full_send_drives) * 100 / GREATEST(total_drives, 1))"
+
+  # 全油门占比（250+ kW，Performance 车主才会碰到）
+  - var: full_send_ratio
+    expr: "ROUND(full_send_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 佛系占比（<100 kW）
+  - var: chill_ratio
+    expr: "ROUND(chill_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 日常占比（100-149 kW）
+  - var: normal_ratio
+    expr: "ROUND(normal_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 地板电指数 0-100：
+  # punch_ratio 权重 2 + 峰值功率超 150 部分 /4 + full_send_ratio 权重 5
+  - var: punch_score
+    expr: "LEAST(100, ROUND(punch_ratio * 2 + GREATEST(peak_power - 150, 0) / 4 + full_send_ratio * 5))"
+
+  # 五档人格判定
+  - var: punch_band
+    level:
+      input: punch_score
+      thresholds:
+        - { lt: 12, label: p1 }
+        - { lt: 35, label: p2 }
+        - { lt: 60, label: p3 }
+        - { lt: 85, label: p4 }
+        - { label: p5 }
+
+  # 人格查表
+  - var: persona
+    lookup:
+      key: punch_band
+      table: punch_personas
+      default:
+        name: "神秘动力体"
+        desc: "你的功率数据超出了已知分类体系。"
+        tag: "#电门在思考人生"
+
+  # 条形宽度（轨道 540px）
+  - var: bar_width
+    expr: "punch_score * 540 / 100"
+
+  # 展示用
+  - var: peak_power_r
+    expr: "ROUND(peak_power)"
+
+  - var: avg_power_r
+    expr: "ROUND(avg_power)"
+
+  - var: summary
+    template: "近 ${window_days} 天地板电指数 ${punch_score}/100：峰值 ${peak_power_r}kW、均功 ${avg_power_r}kW、${punch_ratio}% 行程踩到 150kW+。你是「${persona.name}」。"
+
+tables:
+  punch_personas:
+    p1:
+      name: "佛系滑行家"
+      desc: "电门踩得像踩鸡蛋，能耗曲线平得像心电图停了。"
+      tag: "#续航榜常年霸榜选手"
+    p2:
+      name: "理性驾驶者"
+      desc: "该快则快该省则省，电门控制收放自如。"
+      tag: "#黄金右脚认证"
+    p3:
+      name: "推背感爱好者"
+      desc: "偶尔来一脚深的，推背感是通勤路上的小确幸。"
+      tag: "#红绿灯起步从不输"
+    p4:
+      name: "动力上瘾患者"
+      desc: "你的电门踏板比刹车磨损快三倍。"
+      tag: "#轮胎店年度VIP"
+    p5:
+      name: "全油门战士"
+      desc: "不是你开车，是车在努力跟上你的右脚。"
+      tag: "#Plaid模式是默认模式"
+
+output:
+  fields:
+    - { name: punch_score,     from: punch_score,     type: number }
+    - { name: persona,         from: persona,         type: object }
+    - { name: summary,         from: summary,         type: string }
+    - { name: peak_power,      from: peak_power_r,    type: number }
+    - { name: avg_power,       from: avg_power_r,     type: number }
+    - { name: punch_ratio,     from: punch_ratio,     type: number }
+    - { name: full_send_ratio, from: full_send_ratio, type: number }
+    - { name: chill_ratio,    from: chill_ratio,    type: number }
+    - { name: normal_ratio,   from: normal_ratio,   type: number }
+    - { name: total_drives,    from: total_drives,    type: number }
