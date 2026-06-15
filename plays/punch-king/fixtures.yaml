@@ -22,6 +22,10 @@ fixtures:
       punch_ratio: 80
       # full_send_ratio = ROUND(12*100/30) = ROUND(40.0) = 40
       full_send_ratio: 40
+      # chill_ratio = ROUND(2*100/30) = ROUND(6.67) = 7
+      chill_ratio: 7
+      # normal_ratio = ROUND(4*100/30) = ROUND(13.33) = 13
+      normal_ratio: 13
       # punch_score = LEAST(100, ROUND(80*2 + (380-150)/4 + 40*5))
       #   = LEAST(100, ROUND(160 + 57.5 + 200)) = LEAST(100, ROUND(417.5))
       #   = LEAST(100, 418) = 100
@@ -48,6 +52,10 @@ fixtures:
       punch_ratio: 28
       # full_send_ratio = ROUND(1*100/40) = ROUND(2.5) = 3
       full_send_ratio: 3
+      # chill_ratio = ROUND(12*100/40) = ROUND(30.0) = 30
+      chill_ratio: 30
+      # normal_ratio = ROUND(17*100/40) = ROUND(42.5) = 43
+      normal_ratio: 43
       # punch_score = ROUND(28*2 + (200-150)/4 + 3*5)
       #   = ROUND(56 + 12.5 + 15) = ROUND(83.5) = 84
       # 84 → p4 (lt:85, ≥60). Good!
@@ -74,6 +82,10 @@ fixtures:
       punch_ratio: 20
       # full_send_ratio = ROUND(0*100/50) = 0
       full_send_ratio: 0
+      # chill_ratio = ROUND(18*100/50) = ROUND(36.0) = 36
+      chill_ratio: 36
+      # normal_ratio = ROUND(22*100/50) = ROUND(44.0) = 44
+      normal_ratio: 44
       # punch_score = ROUND(20*2 + (170-150)/4 + 0*5)
       #   = ROUND(40 + 5 + 0) = ROUND(45) = 45
       # 45 → p3 (lt:60, ≥35). Good!
@@ -100,6 +112,10 @@ fixtures:
       punch_ratio: 13
       # full_send_ratio = ROUND(0*100/30) = 0
       full_send_ratio: 0
+      # chill_ratio = ROUND(14*100/30) = ROUND(46.67) = 47
+      chill_ratio: 47
+      # normal_ratio = ROUND(12*100/30) = ROUND(40.0) = 40
+      normal_ratio: 40
       # punch_score = ROUND(13*2 + (153-150)/4 + 0*5)
       #   = ROUND(26 + 0.75 + 0) = ROUND(26.75) = 27
       # 27 → p2 (lt:35, ≥12). Good!
@@ -126,6 +142,10 @@ fixtures:
       punch_ratio: 4
       # full_send_ratio = ROUND(0*100/25) = 0
       full_send_ratio: 0
+      # chill_ratio = ROUND(18*100/25) = ROUND(72.0) = 72
+      chill_ratio: 72
+      # normal_ratio = ROUND(6*100/25) = ROUND(24.0) = 24
+      normal_ratio: 24
       # punch_score = ROUND(4*2 + GREATEST(130-150,0)/4 + 0*5)
       #   = ROUND(8 + 0/4 + 0) = ROUND(8) = 8
       #   (GREATEST(-20,0)=0 because peak_power < 150)

@@ -62,6 +62,14 @@ compute:
   - var: full_send_ratio
     expr: "ROUND(full_send_drives * 100 / GREATEST(total_drives, 1))"
 
+  # 佛系占比（<100 kW）
+  - var: chill_ratio
+    expr: "ROUND(chill_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 日常占比（100-149 kW）
+  - var: normal_ratio
+    expr: "ROUND(normal_drives * 100 / GREATEST(total_drives, 1))"
+
   # 地板电指数 0-100：
   # punch_ratio 权重 2 + 峰值功率超 150 部分 /4 + full_send_ratio 权重 5
   - var: punch_score
@@ -134,4 +142,6 @@ output:
     - { name: avg_power,       from: avg_power_r,     type: number }
     - { name: punch_ratio,     from: punch_ratio,     type: number }
     - { name: full_send_ratio, from: full_send_ratio, type: number }
+    - { name: chill_ratio,    from: chill_ratio,    type: number }
+    - { name: normal_ratio,   from: normal_ratio,   type: number }
     - { name: total_drives,    from: total_drives,    type: number }
