@@ -59,6 +59,14 @@ compute:
   - var: fury_ratio
     expr: "ROUND(fury_drives * 100 / GREATEST(total_drives, 1))"
 
+  # 城市巡航占比（<80 km/h）
+  - var: city_ratio
+    expr: "ROUND(city_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 高速巡航占比（80-119 km/h）
+  - var: highway_ratio
+    expr: "ROUND(highway_drives * 100 / GREATEST(total_drives, 1))"
+
   # 速度狂人指数 0-100：
   # fast_ratio 权重 1.2 + fury_ratio 权重 3 + 峰值速度超 100 部分 /3
   - var: speed_score
@@ -131,4 +139,6 @@ output:
     - { name: avg_speed,    from: avg_speed_r,  type: number }
     - { name: fast_ratio,   from: fast_ratio,   type: number }
     - { name: fury_ratio,   from: fury_ratio,   type: number }
+    - { name: city_ratio,   from: city_ratio,   type: number }
+    - { name: highway_ratio,from: highway_ratio,type: number }
     - { name: total_drives, from: total_drives, type: number }
