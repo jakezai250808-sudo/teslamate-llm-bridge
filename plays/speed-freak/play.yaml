@@ -1,0 +1,134 @@
+# ============================================================================
+# Play: speed-freak — 速度狂人指数
+#
+# 用 drives.speed_max 分布算出一个 0-100 速度狂人指数：
+#   快速行程占比(≥120km/h) × 1.2 + 极速行程占比(≥150km/h) × 3 + 峰值速度溢出/3
+# 五档人格 + 自嘲标签，全新维度（未与现有 play 撞车）。
+# ============================================================================
+
+schema_version: 1
+
+name: speed-freak
+title: "速度狂人指数"
+emoji: "🏎️"
+
+description: >-
+  统计窗口内行程 speed_max 分布，算 0-100 速度狂人指数：
+  快速占比(≥120km/h)权重1.2 + 极速占比(≥150km/h)权重3 + 峰值溢出/3，
+  配五档人格标签与自嘲 tag。用户问「我开得快不快 / 速度狂 / 最快跑过多快」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 按 speed_max 分四桶：city(<80) / highway(80-119) / fast(120-149) / fury(150+)
+# 取最高速度 + 均速，聚合成一行。
+sql: |-
+  WITH d AS (
+    SELECT
+      speed_max,
+      distance
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND distance > 0
+      AND speed_max IS NOT NULL
+  )
+  SELECT
+    COUNT(*) AS total_drives,
+    COALESCE(MAX(speed_max), 0) AS top_speed,
+    COUNT(*) FILTER (WHERE speed_max < 80) AS city_drives,
+    COUNT(*) FILTER (WHERE speed_max >= 80 AND speed_max < 120) AS highway_drives,
+    COUNT(*) FILTER (WHERE speed_max >= 120 AND speed_max < 150) AS fast_drives,
+    COUNT(*) FILTER (WHERE speed_max >= 150) AS fury_drives,
+    COALESCE(ROUND(AVG(speed_max)::numeric, 1), 0) AS avg_speed_max
+  FROM d
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 快速行程占比（120+ km/h）
+  - var: fast_ratio
+    expr: "ROUND((fast_drives + fury_drives) * 100 / GREATEST(total_drives, 1))"
+
+  # 极速行程占比（150+ km/h）
+  - var: fury_ratio
+    expr: "ROUND(fury_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 速度狂人指数 0-100：
+  # fast_ratio 权重 1.2 + fury_ratio 权重 3 + 峰值速度超 100 部分 /3
+  - var: speed_score
+    expr: "LEAST(100, ROUND(fast_ratio * 12 / 10 + fury_ratio * 3 + GREATEST(top_speed - 100, 0) / 3))"
+
+  # 五档人格判定
+  - var: speed_band
+    level:
+      input: speed_score
+      thresholds:
+        - { lt: 15, label: s1 }
+        - { lt: 40, label: s2 }
+        - { lt: 70, label: s3 }
+        - { lt: 90, label: s4 }
+        - { label: s5 }
+
+  # 人格查表
+  - var: persona
+    lookup:
+      key: speed_band
+      table: speed_personas
+      default:
+        name: "神秘车速体"
+        desc: "你的速度数据超出了已知分类体系。"
+        tag: "#仪表盘在思考人生"
+
+  # 条形宽度（轨道 540px）
+  - var: bar_width
+    expr: "speed_score * 540 / 100"
+
+  # 展示用
+  - var: top_speed_r
+    expr: "ROUND(top_speed)"
+
+  - var: avg_speed_r
+    expr: "ROUND(avg_speed_max)"
+
+  - var: summary
+    template: "近 ${window_days} 天速度狂人指数 ${speed_score}/100：最快 ${top_speed_r}km/h、均速 ${avg_speed_r}km/h、${fast_ratio}% 行程上 120。你是「${persona.name}」。"
+
+tables:
+  speed_personas:
+    s1:
+      name: "法规守护者"
+      desc: "你比限速牌还守规矩，超速摄像头见了你都失业。"
+      tag: "#限速牌的好朋友"
+    s2:
+      name: "高速巡航家"
+      desc: "该快就快该慢就慢，稳得像在开定速邮轮。"
+      tag: "#老司机从不超速只超车"
+    s3:
+      name: "性能体验官"
+      desc: "偶尔释放一下，推背感是生活的调味剂。"
+      tag: "#电门踩的不是速度是快乐"
+    s4:
+      name: "速度成瘾者"
+      desc: "左道是你的精神故乡，快车道是你家客厅。"
+      tag: "#左道精神股东"
+    s5:
+      name: "赛道在逃选手"
+      desc: "公共道路已经满足不了你了，建议报个赛道日。"
+      tag: "#纽北驻本地办事处"
+
+output:
+  fields:
+    - { name: speed_score,  from: speed_score,  type: number }
+    - { name: persona,      from: persona,      type: object }
+    - { name: summary,      from: summary,      type: string }
+    - { name: top_speed,    from: top_speed_r,  type: number }
+    - { name: avg_speed,    from: avg_speed_r,  type: number }
+    - { name: fast_ratio,   from: fast_ratio,   type: number }
+    - { name: fury_ratio,   from: fury_ratio,   type: number }
+    - { name: total_drives, from: total_drives, type: number }

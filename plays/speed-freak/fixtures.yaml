@@ -1,0 +1,149 @@
+# ============================================================================
+# Play fixtures for speed-freak.
+# Each fixture feeds a fake SQL result row through min_sample + the compute
+# pipeline and asserts the resulting vars. Expected values are hand-computed
+# from play.yaml — see docs/play-manifest-spec.md §8.
+# ============================================================================
+
+fixtures:
+  # ---- Tier 1: 赛道在逃选手 (s5, catch-all) ----
+  - name: track-escapee
+    window_days: 30
+    row:
+      total_drives: 50
+      top_speed: 210
+      city_drives: 5
+      highway_drives: 10
+      fast_drives: 15
+      fury_drives: 20
+      avg_speed_max: 130.5
+    expect:
+      # fast_ratio = ROUND((15+20)*100/50) = ROUND(70.0) = 70
+      fast_ratio: 70
+      # fury_ratio = ROUND(20*100/50) = ROUND(40.0) = 40
+      fury_ratio: 40
+      # speed_score = LEAST(100, ROUND(70*12/10 + 40*3 + (210-100)/3))
+      #   = LEAST(100, ROUND(84 + 120 + 36.67)) = LEAST(100, ROUND(240.67))
+      #   = LEAST(100, 241) = 100
+      speed_score: 100
+      speed_band: s5
+      persona.name: "赛道在逃选手"
+      persona.tag: "#纽北驻本地办事处"
+      top_speed_r: 210
+      avg_speed_r: 131   # ROUND(130.5) = 131
+
+  # ---- Tier 2: 速度成瘾者 (s4, lt:90) ----
+  - name: speed-addict
+    window_days: 30
+    row:
+      total_drives: 50
+      top_speed: 165
+      city_drives: 18
+      highway_drives: 17
+      fast_drives: 12
+      fury_drives: 3
+      avg_speed_max: 97.6
+    expect:
+      # fast_ratio = ROUND((12+3)*100/50) = ROUND(30.0) = 30
+      fast_ratio: 30
+      # fury_ratio = ROUND(3*100/50) = ROUND(6.0) = 6
+      fury_ratio: 6
+      # speed_score = ROUND(30*12/10 + 6*3 + (165-100)/3)
+      #   = ROUND(36 + 18 + 21.67) = ROUND(75.67) = 76
+      # 76 → s4 (lt:90, ≥70). Good.
+      speed_score: 76
+      speed_band: s4
+      persona.name: "速度成瘾者"
+      persona.tag: "#左道精神股东"
+      top_speed_r: 165
+      avg_speed_r: 98   # ROUND(97.6) = 98
+
+  # ---- Tier 3: 性能体验官 (s3, lt:70) ----
+  - name: performance-taster
+    window_days: 30
+    row:
+      total_drives: 60
+      top_speed: 145
+      city_drives: 20
+      highway_drives: 25
+      fast_drives: 15
+      fury_drives: 0
+      avg_speed_max: 88.3
+    expect:
+      # fast_ratio = ROUND((15+0)*100/60) = ROUND(25.0) = 25
+      fast_ratio: 25
+      # fury_ratio = ROUND(0*100/60) = 0
+      fury_ratio: 0
+      # speed_score = ROUND(25*12/10 + 0*3 + (145-100)/3)
+      #   = ROUND(30 + 0 + 15.0) = ROUND(45.0) = 45
+      # 45 → s3 (lt:70, ≥40). Good.
+      speed_score: 45
+      speed_band: s3
+      persona.name: "性能体验官"
+      persona.tag: "#电门踩的不是速度是快乐"
+      top_speed_r: 145
+      avg_speed_r: 88   # ROUND(88.3) = 88
+
+  # ---- Tier 4: 高速巡航家 (s2, lt:40) ----
+  - name: highway-cruiser
+    window_days: 30
+    row:
+      total_drives: 30
+      top_speed: 132
+      city_drives: 10
+      highway_drives: 14
+      fast_drives: 6
+      fury_drives: 0
+      avg_speed_max: 72.8
+    expect:
+      # fast_ratio = ROUND((6+0)*100/30) = ROUND(20.0) = 20
+      fast_ratio: 20
+      # fury_ratio = ROUND(0*100/30) = 0
+      fury_ratio: 0
+      # speed_score = ROUND(20*12/10 + 0*3 + (132-100)/3)
+      #   = ROUND(24 + 0 + 10.67) = ROUND(34.67) = 35
+      # 35 → s2 (lt:40, ≥15). Good.
+      speed_score: 35
+      speed_band: s2
+      persona.name: "高速巡航家"
+      persona.tag: "#老司机从不超速只超车"
+      top_speed_r: 132
+      avg_speed_r: 73   # ROUND(72.8) = 73
+
+  # ---- Tier 5: 法规守护者 (s1, lt:15) ----
+  - name: law-abiding
+    window_days: 30
+    row:
+      total_drives: 20
+      top_speed: 105
+      city_drives: 12
+      highway_drives: 7
+      fast_drives: 1
+      fury_drives: 0
+      avg_speed_max: 55.0
+    expect:
+      # fast_ratio = ROUND((1+0)*100/20) = ROUND(5.0) = 5
+      fast_ratio: 5
+      # fury_ratio = ROUND(0*100/20) = 0
+      fury_ratio: 0
+      # speed_score = ROUND(5*12/10 + 0*3 + (105-100)/3)
+      #   = ROUND(6 + 0 + 1.67) = ROUND(7.67) = 8
+      # 8 → s1 (lt:15). Good.
+      speed_score: 8
+      speed_band: s1
+      persona.name: "法规守护者"
+      persona.tag: "#限速牌的好朋友"
+      top_speed_r: 105
+      avg_speed_r: 55   # ROUND(55.0) = 55
+
+  # ---- Unscored: 低于 min_sample ----
+  - name: too-few-drives
+    row:
+      total_drives: 3
+      top_speed: 88
+      city_drives: 2
+      highway_drives: 1
+      fast_drives: 0
+      fury_drives: 0
+      avg_speed_max: 45.0
+    expect_unscored: true   # total_drives 3 < min_sample.min 5
