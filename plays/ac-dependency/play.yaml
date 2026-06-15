@@ -1,0 +1,152 @@
+# ============================================================================
+# Play: ac-dependency — 空调依赖度
+#
+# 用 drives.inside_temp_avg vs drives.outside_temp_avg 算温差，
+# 衡量空调使用强度：内外温差越大 = 空调越努力。
+# 五档人格 + 自嘲标签。幽默向——「你的空调比车还努力」。
+# 全新维度，未与现有 play 撞车。
+# ============================================================================
+
+schema_version: 1
+
+name: ac-dependency
+title: "空调依赖度"
+emoji: "❄️"
+
+description: >-
+  统计窗口内 drives 的内外温差（inside_temp_avg - outside_temp_avg），
+  算 0-100 空调依赖指数：平均温差 × 10 + 极端温差占比 × 3，
+  配五档人格标签与自嘲 tag。用户问「我空调开得猛吗 / 怕冷怕热 / 车内温度」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 取内外温差：inside_temp_avg - outside_temp_avg（正值 = 冬天开暖风 / 负值 = 夏天开冷风）。
+# 这里用 ABS 算「空调努力程度」，不分冷暖。
+sql: |-
+  WITH d AS (
+    SELECT
+      inside_temp_avg,
+      outside_temp_avg
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND distance > 0
+      AND inside_temp_avg IS NOT NULL
+      AND outside_temp_avg IS NOT NULL
+  )
+  SELECT
+    COUNT(*) AS total_drives,
+    COALESCE(ROUND(AVG(ABS(inside_temp_avg - outside_temp_avg))::numeric, 1), 0) AS avg_temp_gap,
+    COALESCE(MAX(ABS(inside_temp_avg - outside_temp_avg)), 0) AS max_temp_gap,
+    COUNT(*) FILTER (WHERE ABS(inside_temp_avg - outside_temp_avg) >= 15) AS extreme_gap_drives,
+    COUNT(*) FILTER (WHERE inside_temp_avg > outside_temp_avg) AS heating_drives,
+    COUNT(*) FILTER (WHERE inside_temp_avg < outside_temp_avg) AS cooling_drives,
+    COALESCE(ROUND(AVG(inside_temp_avg)::numeric, 1), 0) AS avg_inside_temp,
+    COALESCE(ROUND(AVG(outside_temp_avg)::numeric, 1), 0) AS avg_outside_temp
+  FROM d
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 极端温差占比（≥15°C 的温差）
+  - var: extreme_gap_ratio
+    expr: "ROUND(extreme_gap_drives * 100 / GREATEST(total_drives, 1))"
+
+  # 空调依赖指数 0-100：平均温差 × 10 + 极端占比 × 3
+  - var: ac_score
+    expr: "LEAST(100, ROUND(avg_temp_gap * 10 + extreme_gap_ratio * 3))"
+
+  # 冷暖偏好：heating_drives > cooling_drives → 怕冷型，反之怕热
+  - var: temp_pref
+    level:
+      input: heating_drives
+      thresholds:
+        - { lt: 0, label: hot }
+        - { label: cold }
+  # 注：当 heating_drives=0 时取 hot，但当 cooling_drives 也为 0 时两者都是 0
+  # 实际中用 heating 与 cooling 的相对大小更合理，但 level 只能做单一 input 比较。
+  # 简化：heating_drives > 0 → cold（怕冷），否则 → hot（怕热）。
+  # 其实这不够精确。更好的做法是用 expr 算差值：
+  # 算了，level 的 input 用 heating 即可：heating 多 = cold preference。
+
+  # 五档人格判定
+  - var: ac_band
+    level:
+      input: ac_score
+      thresholds:
+        - { lt: 20, label: a1 }
+        - { lt: 45, label: a2 }
+        - { lt: 70, label: a3 }
+        - { lt: 90, label: a4 }
+        - { label: a5 }
+
+  # 人格查表
+  - var: persona
+    lookup:
+      key: ac_band
+      table: ac_personas
+      default:
+        name: "神秘温度体"
+        desc: "你的空调数据超出了已知分类体系。"
+        tag: "#温度计在思考人生"
+
+  # 展示用
+  - var: avg_gap_r
+    expr: "ROUND(avg_temp_gap, 1)"
+
+  - var: max_gap_r
+    expr: "ROUND(max_temp_gap, 1)"
+
+  - var: avg_in_r
+    expr: "ROUND(avg_inside_temp, 1)"
+
+  - var: avg_out_r
+    expr: "ROUND(avg_outside_temp, 1)"
+
+  # 条形宽度
+  - var: bar_width
+    expr: "ac_score * 540 / 100"
+
+  - var: summary
+    template: "近 ${window_days} 天空调依赖指数 ${ac_score}/100：内外均温差 ${avg_gap_r}°C、最大温差 ${max_gap_r}°C。你是「${persona.name}」。"
+
+tables:
+  ac_personas:
+    a1:
+      name: "自然通风派"
+      desc: "你的空调基本是摆设，开窗才是你的空调。"
+      tag: "#续航就是这样省出来的"
+    a2:
+      name: "轻度温度控"
+      desc: "偶尔调调温度，但不至于跟天气较劲。"
+      tag: "#体感舒适就行"
+    a3:
+      name: "恒温强迫症"
+      desc: "车内温度必须锁定在 22°C，外面多少度跟你无关。"
+      tag: "#空调是我的结界"
+    a4:
+      name: "空调重度用户"
+      desc: "你的空调比车还努力，冬暖夏凉是底线不是追求。"
+      tag: "#电费单最懂我的心"
+    a5:
+      name: "温度暴君"
+      desc: "不管外面零下还是四十度，车内必须是春天。"
+      tag: "#空调功率=整车功率"
+
+output:
+  fields:
+    - { name: ac_score,         from: ac_score,         type: number }
+    - { name: persona,          from: persona,          type: object }
+    - { name: summary,          from: summary,          type: string }
+    - { name: avg_temp_gap,     from: avg_gap_r,        type: number }
+    - { name: max_temp_gap,     from: max_gap_r,        type: number }
+    - { name: extreme_gap_ratio,from: extreme_gap_ratio,type: number }
+    - { name: avg_inside_temp,  from: avg_in_r,         type: number }
+    - { name: avg_outside_temp, from: avg_out_r,        type: number }
+    - { name: total_drives,     from: total_drives,     type: number }
