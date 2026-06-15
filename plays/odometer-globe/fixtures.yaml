@@ -1,0 +1,109 @@
+# ============================================================================
+# Play fixtures for odometer-globe.
+# ============================================================================
+
+fixtures:
+  # ---- Tier 1: 环球旅行家 (g4, catch-all, ≥50000km) ----
+  - name: globe-trotter
+    window_days: 365
+    row:
+      total_drives: 800
+      total_km: 82350.5
+      avg_km: 102.9
+      longest_km: 620.0
+    expect:
+      # earth_laps = ROUND(82350.5/40075*100)/100 = ROUND(205.51)/100 = 205/100 = 2.05
+      earth_laps: 2.05
+      # beijing_lhasa = ROUND(82350.5/3700*10)/10 = ROUND(222.57)/10 = 223/10 = 22.3
+      beijing_lhasa: 22.3
+      # beijing_shanghai = ROUND(82350.5/1200*10)/10 = ROUND(686.25)/10 = 686/10 = 68.6
+      beijing_shanghai: 68.6
+      # globe_score = LEAST(100, ROUND(82350.5/500)) = LEAST(100, 165) = 100
+      globe_score: 100
+      globe_band: g4
+      persona.name: "环球旅行家"
+      persona.tag: "#车轮丈量地球"
+      total_km_r: 82350.5
+      avg_km_r: 102.9
+      longest_km_r: 620
+
+  # ---- Tier 2: 公路游牧族 (g3, lt:50000) ----
+  - name: road-nomad
+    window_days: 365
+    row:
+      total_drives: 350
+      total_km: 32500.0
+      avg_km: 92.9
+      longest_km: 450.0
+    expect:
+      # earth_laps = ROUND(32500/40075*100)/100 = ROUND(81.10)/100 = 81/100 = 0.81
+      earth_laps: 0.81
+      # beijing_lhasa = ROUND(32500/3700*10)/10 = ROUND(87.84)/10 = 88/10 = 8.8
+      beijing_lhasa: 8.8
+      # beijing_shanghai = ROUND(32500/1200*10)/10 = ROUND(270.83)/10 = 271/10 = 27.1
+      beijing_shanghai: 27.1
+      # globe_score = LEAST(100, ROUND(32500/500)) = LEAST(100, 65) = 65
+      globe_score: 65
+      globe_band: g3
+      persona.name: "公路游牧族"
+      persona.tag: "#充电桩全国巡回大使"
+      total_km_r: 32500.0
+      avg_km_r: 92.9
+      longest_km_r: 450
+
+  # ---- Tier 3: 周末远征家 (g2, lt:20000) ----
+  - name: weekend-explorer
+    window_days: 365
+    row:
+      total_drives: 150
+      total_km: 12000.0
+      avg_km: 80.0
+      longest_km: 300.0
+    expect:
+      # earth_laps = ROUND(12000/40075*100)/100 = ROUND(29.94)/100 = 30/100 = 0.30
+      earth_laps: 0.30
+      # beijing_lhasa = ROUND(12000/3700*10)/10 = ROUND(32.43)/10 = 32/10 = 3.2
+      beijing_lhasa: 3.2
+      # beijing_shanghai = ROUND(12000/1200*10)/10 = ROUND(100.0)/10 = 100/10 = 10.0
+      beijing_shanghai: 10.0
+      # globe_score = LEAST(100, ROUND(12000/500)) = LEAST(100, 24) = 24
+      globe_score: 24
+      globe_band: g2
+      persona.name: "周末远征家"
+      persona.tag: "#服务区是我第二个家"
+      total_km_r: 12000.0
+      avg_km_r: 80.0
+      longest_km_r: 300
+
+  # ---- Tier 4: 城市圈养车主 (g1, lt:5000) ----
+  - name: city-dweller
+    window_days: 365
+    row:
+      total_drives: 80
+      total_km: 3200.0
+      avg_km: 40.0
+      longest_km: 80.0
+    expect:
+      # earth_laps = ROUND(3200/40075*100)/100 = ROUND(7.99)/100 = 8/100 = 0.08
+      earth_laps: 0.08
+      # beijing_lhasa = ROUND(3200/3700*10)/10 = ROUND(8.65)/10 = 9/10 = 0.9
+      beijing_lhasa: 0.9
+      # beijing_shanghai = ROUND(3200/1200*10)/10 = ROUND(26.67)/10 = 27/10 = 2.7
+      beijing_shanghai: 2.7
+      # globe_score = LEAST(100, ROUND(3200/500)) = LEAST(100, 6) = 6
+      globe_score: 6
+      globe_band: g1
+      persona.name: "城市圈养车主"
+      persona.tag: "#地库才是我的家"
+      total_km_r: 3200.0
+      avg_km_r: 40.0
+      longest_km_r: 80
+
+  # ---- Unscored: 低于 min_sample ----
+  - name: too-few-drives
+    row:
+      total_drives: 2
+      total_km: 500.0
+      avg_km: 250.0
+      longest_km: 300.0
+    expect_unscored: true   # total_drives 2 < min_sample.min 5
