@@ -1,0 +1,143 @@
+# ============================================================================
+# Play: charge-socializer — 充电社交家
+#
+# 用 charging_processes.start_date 的本地时段分布，
+# 区分日间充电（社交达人——可能碰到车友）vs 深夜充电（独充侠）。
+# 四档人格 + 自嘲标签。全新维度，未与现有 play 撞车。
+# ============================================================================
+
+schema_version: 1
+
+name: charge-socializer
+title: "充电社交家"
+emoji: "🔌"
+
+description: >-
+  统计窗口内 charging_processes 的时段分布（日间 08:00-20:00 vs 深夜 23:00-05:00），
+  算 0-100 充电社交指数：日间占比权重 1.5 + 超充快充占比权重 1，
+  配四档人格标签。用户问「我充电社交吗 / 充电习惯 / 充电时段」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 30
+
+# 取充电时段分布：日间(08:00-20:00) / 晚间(20:00-23:00) / 深夜(23:00-05:00) / 清晨(05:00-08:00)
+sql: |-
+  WITH local_charges AS (
+    SELECT
+      start_date AT TIME ZONE 'UTC' AT TIME ZONE :tz AS local_start,
+      duration_min,
+      charge_energy_added
+    FROM charging_processes
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+  )
+  SELECT
+    COUNT(*) AS total_charges,
+    COUNT(*) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 8
+        AND EXTRACT(HOUR FROM local_start) < 20
+    ) AS daytime_charges,
+    COUNT(*) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 20
+        AND EXTRACT(HOUR FROM local_start) < 23
+    ) AS evening_charges,
+    COUNT(*) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 23
+         OR EXTRACT(HOUR FROM local_start) < 5
+    ) AS late_night_charges,
+    COUNT(*) FILTER (
+      WHERE EXTRACT(HOUR FROM local_start) >= 5
+        AND EXTRACT(HOUR FROM local_start) < 8
+    ) AS early_morning_charges,
+    COALESCE(ROUND(AVG(duration_min)::numeric, 1), 0) AS avg_duration_min,
+    COALESCE(ROUND(AVG(charge_energy_added)::numeric, 1), 0) AS avg_energy_added
+  FROM local_charges
+
+min_sample:
+  field: total_charges
+  min: 3
+
+compute:
+  # 日间充电占比（社交时段 08:00-20:00）
+  - var: daytime_ratio
+    expr: "ROUND(daytime_charges * 100 / GREATEST(total_charges, 1))"
+
+  # 深夜充电占比（独充时段 23:00-05:00）
+  - var: late_night_ratio
+    expr: "ROUND(late_night_charges * 100 / GREATEST(total_charges, 1))"
+
+  # 晚间充电占比（20:00-23:00）
+  - var: evening_ratio
+    expr: "ROUND(evening_charges * 100 / GREATEST(total_charges, 1))"
+
+  # 充电社交指数 0-100：日间占比 × 1.5 + 平均充电时长/30
+  - var: social_score
+    expr: "LEAST(100, ROUND(daytime_ratio * 15 / 10 + avg_duration_min / 30))"
+
+  # 展示用
+  - var: avg_dur_r
+    expr: "ROUND(avg_duration_min)"
+
+  - var: avg_energy_r
+    expr: "ROUND(avg_energy_added)"
+
+  # 四档人格判定
+  - var: social_band
+    level:
+      input: social_score
+      thresholds:
+        - { lt: 25, label: c1 }
+        - { lt: 55, label: c2 }
+        - { lt: 80, label: c3 }
+        - { label: c4 }
+
+  # 人格查表
+  - var: persona
+    lookup:
+      key: social_band
+      table: social_personas
+      default:
+        name: "神秘充电体"
+        desc: "你的充电数据超出了已知分类体系。"
+        tag: "#充电桩在思考人生"
+
+  # 条形宽度
+  - var: bar_width
+    expr: "social_score * 540 / 100"
+
+  - var: summary
+    template: "近 ${window_days} 天充电社交指数 ${social_score}/100：${daytime_ratio}% 日间充、${late_night_ratio}% 深夜充、均 ${avg_dur_r} 分钟。你是「${persona.name}」。"
+
+tables:
+  social_personas:
+    c1:
+      name: "深夜独充侠"
+      desc: "充电时间比蝙蝠还晚，超充站只有你和路灯醒着。"
+      tag: "#凌晨充电桩VIP"
+    c2:
+      name: "晚间充电派"
+      desc: "下班回家顺手一充，充电是夜生活的序幕。"
+      tag: "#充电追剧两不误"
+    c3:
+      name: "日间充电达人"
+      desc: "白天充电是社交——偶尔碰到车友聊聊续航。"
+      tag: "#超充站社交型选手"
+    c4:
+      name: "超充社交王"
+      desc: "充电站就是你的咖啡馆，每个车友都认识你的车牌。"
+      tag: "#充电桩社交圈核心成员"
+
+output:
+  fields:
+    - { name: social_score,    from: social_score,    type: number }
+    - { name: persona,         from: persona,         type: object }
+    - { name: summary,         from: summary,         type: string }
+    - { name: daytime_ratio,   from: daytime_ratio,   type: number }
+    - { name: late_night_ratio,from: late_night_ratio,type: number }
+    - { name: evening_ratio,   from: evening_ratio,   type: number }
+    - { name: avg_duration_min,from: avg_dur_r,       type: number }
+    - { name: avg_energy_kwh,  from: avg_energy_r,    type: number }
+    - { name: total_charges,   from: total_charges,   type: number }

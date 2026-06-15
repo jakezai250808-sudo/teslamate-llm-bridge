@@ -1,0 +1,123 @@
+# ============================================================================
+# Play fixtures for charge-socializer.
+# ============================================================================
+
+fixtures:
+  # ---- Tier 1: 超充社交王 (c4, catch-all) ----
+  - name: social-king
+    window_days: 30
+    row:
+      total_charges: 30
+      daytime_charges: 22
+      evening_charges: 5
+      late_night_charges: 1
+      early_morning_charges: 2
+      avg_duration_min: 45.0
+      avg_energy_added: 35.5
+    expect:
+      # daytime_ratio = ROUND(22*100/30) = ROUND(73.33) = 73
+      daytime_ratio: 73
+      # late_night_ratio = ROUND(1*100/30) = ROUND(3.33) = 3
+      late_night_ratio: 3
+      # evening_ratio = ROUND(5*100/30) = ROUND(16.67) = 17
+      evening_ratio: 17
+      # social_score = LEAST(100, ROUND(73*15/10 + 45/30)) = LEAST(100, ROUND(109.5 + 1.5)) = LEAST(100, 111) = 100
+      social_score: 100
+      social_band: c4
+      persona.name: "超充社交王"
+      persona.tag: "#充电桩社交圈核心成员"
+      avg_duration_min: 45
+      avg_energy_r: 36   # ROUND(35.5) = 36
+
+  # ---- Tier 2: 日间充电达人 (c3, lt:80) ----
+  - name: daytime-dar
+    window_days: 30
+    row:
+      total_charges: 20
+      daytime_charges: 9
+      evening_charges: 5
+      late_night_charges: 3
+      early_morning_charges: 3
+      avg_duration_min: 25.0
+      avg_energy_added: 22.0
+    expect:
+      # daytime_ratio = ROUND(9*100/20) = ROUND(45.0) = 45
+      daytime_ratio: 45
+      # late_night_ratio = ROUND(3*100/20) = ROUND(15.0) = 15
+      late_night_ratio: 15
+      # evening_ratio = ROUND(5*100/20) = ROUND(25.0) = 25
+      evening_ratio: 25
+      # social_score = ROUND(45*1.5 + 25/30) = ROUND(67.5+0.83) = 68
+      # 68 → c3 (lt:80, ≥55). Good!
+      social_score: 68
+      social_band: c3
+      persona.name: "日间充电达人"
+      persona.tag: "#超充站社交型选手"
+      avg_duration_min: 25
+      avg_energy_r: 22   # ROUND(22.0) = 22
+
+  # ---- Tier 3: 晚间充电派 (c2, lt:55) ----
+  - name: evening-charger
+    window_days: 30
+    row:
+      total_charges: 15
+      daytime_charges: 4
+      evening_charges: 7
+      late_night_charges: 3
+      early_morning_charges: 1
+      avg_duration_min: 40.0
+      avg_energy_added: 30.0
+    expect:
+      # daytime_ratio = ROUND(4*100/15) = ROUND(26.67) = 27
+      daytime_ratio: 27
+      # late_night_ratio = ROUND(3*100/15) = ROUND(20.0) = 20
+      late_night_ratio: 20
+      # evening_ratio = ROUND(7*100/15) = ROUND(46.67) = 47
+      evening_ratio: 47
+      # social_score = ROUND(27*1.5 + 40/30) = ROUND(40.5+1.33) = 42
+      # 42 → c2 (lt:55, ≥25). Good!
+      social_score: 42
+      social_band: c2
+      persona.name: "晚间充电派"
+      persona.tag: "#充电追剧两不误"
+      avg_duration_min: 40
+      avg_energy_r: 30   # ROUND(30.0) = 30
+
+  # ---- Tier 4: 深夜独充侠 (c1, lt:25) ----
+  - name: lone-charger
+    window_days: 30
+    row:
+      total_charges: 10
+      daytime_charges: 1
+      evening_charges: 2
+      late_night_charges: 6
+      early_morning_charges: 1
+      avg_duration_min: 50.0
+      avg_energy_added: 45.0
+    expect:
+      # daytime_ratio = ROUND(1*100/10) = ROUND(10.0) = 10
+      daytime_ratio: 10
+      # late_night_ratio = ROUND(6*100/10) = ROUND(60.0) = 60
+      late_night_ratio: 60
+      # evening_ratio = ROUND(2*100/10) = ROUND(20.0) = 20
+      evening_ratio: 20
+      # social_score = ROUND(10*1.5 + 50/30) = ROUND(15+1.67) = 17
+      # 17 → c1 (lt:25). Good!
+      social_score: 17
+      social_band: c1
+      persona.name: "深夜独充侠"
+      persona.tag: "#凌晨充电桩VIP"
+      avg_duration_min: 50
+      avg_energy_r: 45   # ROUND(45.0) = 45
+
+  # ---- Unscored: 低于 min_sample ----
+  - name: too-few-charges
+    row:
+      total_charges: 1
+      daytime_charges: 0
+      evening_charges: 1
+      late_night_charges: 0
+      early_morning_charges: 0
+      avg_duration_min: 30.0
+      avg_energy_added: 20.0
+    expect_unscored: true   # total_charges 1 < min_sample.min 3
