@@ -1,0 +1,124 @@
+# ============================================================================
+# Play: odometer-globe — 绕圈成就
+#
+# 用累计里程换算成「绕地球 N 圈」「北京→拉萨 N 趟」等地标当量，
+# 四档成就 + 自嘲标签。梗感维度，与 altitude-climber 的地标换算同类但里程维度。
+# ============================================================================
+
+schema_version: 1
+
+name: odometer-globe
+title: "绕圈成就"
+emoji: "🌍"
+
+description: >-
+  统计车辆累计行驶里程，换算成地标当量（绕地球圈数 / 北京→拉萨趟数 / 京沪趟数），
+  配四档成就标签与自嘲 tag。用户问「我开了多远 / 累计里程 / 绕地球几圈」时调用。
+
+scope: read:drives
+
+params:
+  default_days: 365
+
+# 累计所有行程的距离和。SQL 简单但创意在换算层。
+sql: |-
+  SELECT
+    COUNT(*) AS total_drives,
+    COALESCE(ROUND(SUM(distance)::numeric, 1), 0) AS total_km,
+    COALESCE(ROUND(AVG(distance)::numeric, 1), 0) AS avg_km,
+    COALESCE(MAX(distance), 0) AS longest_km
+  FROM drives
+  WHERE car_id = :car_id
+    AND start_date >= :start
+    AND start_date < :end
+    AND distance > 0
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 绕地球圈数（地球周长 40075km）
+  - var: earth_laps
+    expr: "ROUND(total_km / 40075 * 100) / 100"
+
+  # 北京→拉萨趟数（京藏高速 ~3700km）
+  - var: beijing_lhasa
+    expr: "ROUND(total_km / 3700 * 10) / 10"
+
+  # 北京→上海趟数（京沪高速 ~1200km）
+  - var: beijing_shanghai
+    expr: "ROUND(total_km / 1200 * 10) / 10"
+
+  # 绕圈指数 0-100：以 50000km 为满分
+  - var: globe_score
+    expr: "LEAST(100, ROUND(total_km / 500))"
+
+  # 展示用格式化
+  - var: total_km_r
+    expr: "ROUND(total_km, 1)"
+
+  - var: avg_km_r
+    expr: "ROUND(avg_km, 1)"
+
+  - var: longest_km_r
+    expr: "ROUND(longest_km, 1)"
+
+  # 四档成就判定
+  - var: globe_band
+    level:
+      input: total_km
+      thresholds:
+        - { lt: 5000, label: g1 }
+        - { lt: 20000, label: g2 }
+        - { lt: 50000, label: g3 }
+        - { label: g4 }
+
+  # 成就查表
+  - var: persona
+    lookup:
+      key: globe_band
+      table: globe_personas
+      default:
+        name: "里程未知体"
+        desc: "你的里程数据超出了已知分类体系。"
+        tag: "#里程表在思考人生"
+
+  # 条形宽度
+  - var: bar_width
+    expr: "globe_score * 540 / 100"
+
+  - var: summary
+    template: "累计 ${total_km_r} 公里：绕地球 ${earth_laps} 圈 / 北京→拉萨 ${beijing_lhasa} 趟 / 京沪 ${beijing_shanghai} 趟。你是「${persona.name}」。"
+
+tables:
+  globe_personas:
+    g1:
+      name: "城市圈养车主"
+      desc: "你的车主要是城市通勤，最远一趟也就跨了个区。"
+      tag: "#地库才是我的家"
+    g2:
+      name: "周末远征家"
+      desc: "周末不出去跑一圈浑身难受，周边城市已全部打卡。"
+      tag: "#服务区是我第二个家"
+    g3:
+      name: "公路游牧族"
+      desc: "高速公路是你的第二故乡，续航焦虑根本不存在。"
+      tag: "#充电桩全国巡回大使"
+    g4:
+      name: "环球旅行家"
+      desc: "绕地球 N 圈，你开的不是车是地球扫描仪。"
+      tag: "#车轮丈量地球"
+
+output:
+  fields:
+    - { name: globe_score,       from: globe_score,       type: number }
+    - { name: persona,           from: persona,           type: object }
+    - { name: summary,           from: summary,           type: string }
+    - { name: total_km,          from: total_km_r,        type: number }
+    - { name: earth_laps,        from: earth_laps,        type: number }
+    - { name: beijing_lhasa,     from: beijing_lhasa,     type: number }
+    - { name: beijing_shanghai,  from: beijing_shanghai,  type: number }
+    - { name: avg_km,            from: avg_km_r,          type: number }
+    - { name: longest_km,        from: longest_km_r,      type: number }
+    - { name: total_drives,      from: total_drives,      type: number }
