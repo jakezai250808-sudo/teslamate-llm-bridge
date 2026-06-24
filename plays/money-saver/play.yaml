@@ -1,0 +1,154 @@
+# ============================================================================
+# Play: money-saver — 省钱当量
+#
+# 用 charging_processes.charge_energy_added 算累计充电量，
+# 与等效油耗成本对比，算出「开电车帮你省了多少钱」。
+# 省钱额换算成奶茶/油箱/电影票等生活化当量。
+# 四档人格 + 自嘲标签。钱最可晒、全新维度（零覆盖）。
+# ============================================================================
+
+schema_version: 1
+
+name: money-saver
+title: "省钱当量"
+emoji: "💰"
+
+description: >-
+  统计窗口内累计充电量(kWh)与行驶里程(km)，换算等效油耗成本 vs 实际充电成本，
+  算省钱总额与 0-100 省钱指数，配四档人格标签。
+  用户问「省了多少钱 / 电费 / 省钱 / 油费对比」时调用。
+
+scope: read:drives,charging_processes
+
+params:
+  default_days: 30
+
+# 双表聚合：charging_processes 取总充电量，drives 取总里程。
+# 假设：油车 8L/100km、油价 8.5 元/L、家充 0.6 元/kWh。
+sql: |-
+  WITH charges AS (
+    SELECT
+      COALESCE(SUM(charge_energy_added), 0) AS total_kwh,
+      COUNT(*) AS total_charges
+    FROM charging_processes
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+  ),
+  drives_agg AS (
+    SELECT
+      COALESCE(SUM(distance), 0) AS total_km,
+      COUNT(*) AS total_drives
+    FROM drives
+    WHERE car_id = :car_id
+      AND start_date >= :start
+      AND start_date < :end
+      AND distance > 0
+  )
+  SELECT
+    d.total_drives,
+    c.total_charges,
+    c.total_kwh,
+    d.total_km
+  FROM drives_agg d, charges c
+
+min_sample:
+  field: total_drives
+  min: 5
+
+compute:
+  # 等效油费：total_km × 8L/100km × 8.5元/L = total_km × 68 / 100
+  - var: gas_cost
+    expr: "ROUND(total_km * 68 / 100)"
+
+  # 实际充电费：total_kwh × 0.6元/kWh = total_kwh × 6 / 10
+  - var: elec_cost
+    expr: "ROUND(total_kwh * 6 / 10)"
+
+  # 省钱总额（至少为 0）
+  - var: money_saved
+    expr: "GREATEST(gas_cost - elec_cost, 0)"
+
+  # 省钱指数 0-100：每 50 元 = 1 分
+  - var: money_score
+    expr: "LEAST(100, ROUND(money_saved / 50))"
+
+  # 生活化当量
+  - var: milk_tea_cups
+    expr: "ROUND(money_saved / 15)"
+
+  - var: gas_tanks
+    expr: "ROUND(money_saved / 400)"
+
+  - var: movie_tickets
+    expr: "ROUND(money_saved / 50)"
+
+  # 每公里成本（分/km）：elec_cost / total_km × 100
+  - var: cost_per_km
+    expr: "ROUND(elec_cost * 100 / GREATEST(total_km, 1))"
+
+  # 四档人格判定
+  - var: money_band
+    level:
+      input: money_score
+      thresholds:
+        - { lt: 15, label: m1 }
+        - { lt: 40, label: m2 }
+        - { lt: 70, label: m3 }
+        - { label: m4 }
+
+  # 人格查表
+  - var: persona
+    lookup:
+      key: money_band
+      table: money_personas
+      default:
+        name: "神秘省钱体"
+        desc: "你的省钱数据超出了已知分类体系。"
+        tag: "#计算器在思考人生"
+
+  # 展示用
+  - var: total_kwh_r
+    expr: "ROUND(total_kwh)"
+
+  - var: total_km_r
+    expr: "ROUND(total_km)"
+
+  - var: summary
+    template: "近 ${window_days} 天开电车省了 ${money_saved} 元（≈${milk_tea_cups} 杯奶茶 / ${gas_tanks} 箱油 / ${movie_tickets} 张电影票），省钱指数 ${money_score}/100。你是「${persona.name}」。"
+
+tables:
+  money_personas:
+    m1:
+      name: "电费观察员"
+      desc: "刚开始感受电车的省钱魅力，每一度电都让你嘴角上扬。"
+      tag: "#充电比加油爽多了"
+    m2:
+      name: "省钱新手"
+      desc: "省下的钱够请朋友吃顿饭了，电车省钱初体验。"
+      tag: "#省出来的都是赚的"
+    m3:
+      name: "省钱达人"
+      desc: "你的充电账单比别人的咖啡预算还低，省钱已成日常。"
+      tag: "#电费单从不心疼"
+    m4:
+      name: "电动车传教士"
+      desc: "你省下的钱够买一张国际机票了。逢人就安利电车省钱。"
+      tag: "#油车朋友已被你拉黑"
+
+output:
+  fields:
+    - { name: money_score,    from: money_score,    type: number }
+    - { name: money_saved,    from: money_saved,    type: number }
+    - { name: persona,        from: persona,        type: object }
+    - { name: summary,        from: summary,        type: string }
+    - { name: total_kwh,      from: total_kwh_r,    type: number }
+    - { name: total_km,       from: total_km_r,     type: number }
+    - { name: total_drives,   from: total_drives,   type: number }
+    - { name: total_charges,  from: total_charges,  type: number }
+    - { name: milk_tea_cups,  from: milk_tea_cups,  type: number }
+    - { name: gas_tanks,      from: gas_tanks,      type: number }
+    - { name: movie_tickets,  from: movie_tickets,  type: number }
+    - { name: cost_per_km,    from: cost_per_km,    type: number }
+    - { name: gas_cost,       from: gas_cost,       type: number }
+    - { name: elec_cost,      from: elec_cost,      type: number }
