@@ -62,18 +62,15 @@ compute:
   - var: ac_score
     expr: "LEAST(100, ROUND(avg_temp_gap * 10 + extreme_gap_ratio * 3))"
 
-  # 冷暖偏好：heating_drives > cooling_drives → 怕冷型，反之怕热
+  # 冷暖偏好：heating vs cooling 的差值。heating 多 → cold（怕冷），cooling 多 → hot（怕热）。
+  - var: temp_pref_raw
+    expr: "heating_drives - cooling_drives"
   - var: temp_pref
     level:
-      input: heating_drives
+      input: temp_pref_raw
       thresholds:
         - { lt: 0, label: hot }
         - { label: cold }
-  # 注：当 heating_drives=0 时取 hot，但当 cooling_drives 也为 0 时两者都是 0
-  # 实际中用 heating 与 cooling 的相对大小更合理，但 level 只能做单一 input 比较。
-  # 简化：heating_drives > 0 → cold（怕冷），否则 → hot（怕热）。
-  # 其实这不够精确。更好的做法是用 expr 算差值：
-  # 算了，level 的 input 用 heating 即可：heating 多 = cold preference。
 
   # 五档人格判定
   - var: ac_band
