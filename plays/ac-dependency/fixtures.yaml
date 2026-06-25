@@ -1,0 +1,146 @@
+# ============================================================================
+# Play fixtures for ac-dependency.
+# ============================================================================
+
+fixtures:
+  # ---- Tier 1: 温度暴君 (a5, catch-all) ----
+  - name: temp-tyrant
+    window_days: 30
+    row:
+      total_drives: 40
+      avg_temp_gap: 18.5
+      max_temp_gap: 35.0
+      extreme_gap_drives: 28
+      heating_drives: 25
+      cooling_drives: 15
+      avg_inside_temp: 22.0
+      avg_outside_temp: 5.2
+    expect:
+      # extreme_gap_ratio = ROUND(28*100/40) = ROUND(70.0) = 70
+      extreme_gap_ratio: 70
+      # ac_score = LEAST(100, ROUND(18.5*10 + 70*3)) = LEAST(100, ROUND(185+210)) = LEAST(100, 395) = 100
+      ac_score: 100
+      ac_band: a5
+      persona.name: "温度暴君"
+      persona.tag: "#空调功率=整车功率"
+      avg_gap_r: 18.5
+      max_gap_r: 35.0
+      avg_in_r: 22.0
+      avg_out_r: 5.2
+
+  # ---- Tier 2: 空调重度用户 (a4, lt:90) ----
+  - name: ac-heavy
+    window_days: 30
+    row:
+      total_drives: 35
+      avg_temp_gap: 5.0
+      max_temp_gap: 22.0
+      extreme_gap_drives: 4
+      heating_drives: 10
+      cooling_drives: 25
+      avg_inside_temp: 23.0
+      avg_outside_temp: 18.0
+    expect:
+      # extreme_gap_ratio = ROUND(4*100/35) = ROUND(11.43) = 11
+      extreme_gap_ratio: 11
+      # ac_score = ROUND(5.0*10 + 11*3) = ROUND(50+33) = 83
+      # 83 → a4 (lt:90, ≥70). Good!
+      ac_score: 83
+      ac_band: a4
+      persona.name: "空调重度用户"
+      persona.tag: "#电费单最懂我的心"
+      avg_gap_r: 5.0
+      max_gap_r: 22.0
+      avg_in_r: 23.0
+      avg_out_r: 18.0
+
+  # ---- Tier 3: 恒温强迫症 (a3, lt:70) ----
+  - name: thermostat-ocd
+    window_days: 30
+    row:
+      total_drives: 30
+      avg_temp_gap: 4.0
+      max_temp_gap: 14.0
+      extreme_gap_drives: 2
+      heating_drives: 15
+      cooling_drives: 15
+      avg_inside_temp: 22.5
+      avg_outside_temp: 18.5
+    expect:
+      # extreme_gap_ratio = ROUND(2*100/30) = ROUND(6.67) = 7
+      extreme_gap_ratio: 7
+      # ac_score = ROUND(4.0*10 + 7*3) = ROUND(40+21) = 61
+      # 61 → a3 (lt:70, ≥45). Good!
+      ac_score: 61
+      ac_band: a3
+      persona.name: "恒温强迫症"
+      persona.tag: "#空调是我的结界"
+      avg_gap_r: 4.0
+      max_gap_r: 14.0
+      avg_in_r: 22.5
+      avg_out_r: 18.5
+
+  # ---- Tier 4: 轻度温度控 (a2, lt:45) ----
+  - name: mild-temp
+    window_days: 30
+    row:
+      total_drives: 25
+      avg_temp_gap: 3.0
+      max_temp_gap: 10.0
+      extreme_gap_drives: 1
+      heating_drives: 10
+      cooling_drives: 15
+      avg_inside_temp: 22.0
+      avg_outside_temp: 19.0
+    expect:
+      # extreme_gap_ratio = ROUND(1*100/25) = ROUND(4.0) = 4
+      extreme_gap_ratio: 4
+      # ac_score = ROUND(3.0*10 + 4*3) = ROUND(30+12) = 42
+      # 42 → a2 (lt:45, ≥20). Good!
+      ac_score: 42
+      ac_band: a2
+      persona.name: "轻度温度控"
+      persona.tag: "#体感舒适就行"
+      avg_gap_r: 3.0
+      max_gap_r: 10.0
+      avg_in_r: 22.0
+      avg_out_r: 19.0
+
+  # ---- Tier 5: 自然通风派 (a1, lt:20) ----
+  - name: natural-breeze
+    window_days: 30
+    row:
+      total_drives: 20
+      avg_temp_gap: 1.2
+      max_temp_gap: 5.0
+      extreme_gap_drives: 0
+      heating_drives: 5
+      cooling_drives: 15
+      avg_inside_temp: 20.5
+      avg_outside_temp: 19.5
+    expect:
+      # extreme_gap_ratio = ROUND(0*100/20) = 0
+      extreme_gap_ratio: 0
+      # ac_score = ROUND(1.2*10 + 0*3) = ROUND(12) = 12
+      # 12 → a1 (lt:20). Good!
+      ac_score: 12
+      ac_band: a1
+      persona.name: "自然通风派"
+      persona.tag: "#续航就是这样省出来的"
+      avg_gap_r: 1.2
+      max_gap_r: 5.0
+      avg_in_r: 20.5
+      avg_out_r: 19.5
+
+  # ---- Unscored: 低于 min_sample ----
+  - name: too-few-drives
+    row:
+      total_drives: 3
+      avg_temp_gap: 5.0
+      max_temp_gap: 10.0
+      extreme_gap_drives: 1
+      heating_drives: 2
+      cooling_drives: 1
+      avg_inside_temp: 22.0
+      avg_outside_temp: 17.0
+    expect_unscored: true   # total_drives 3 < min_sample.min 5
