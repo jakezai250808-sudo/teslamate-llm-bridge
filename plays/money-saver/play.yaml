@@ -18,7 +18,7 @@ description: >-
   算省钱总额与 0-100 省钱指数，配四档人格标签。
   用户问「省了多少钱 / 电费 / 省钱 / 油费对比」时调用。
 
-scope: read:drives,charging_processes
+scope: read:drives   # schema enum 只允许 read:drives；charging_processes 读取同 charging-habit 约定（scope 为粗粒度标签，不按表强制）
 
 params:
   default_days: 30
